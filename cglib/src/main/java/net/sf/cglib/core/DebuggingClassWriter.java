@@ -46,7 +46,9 @@ public class DebuggingClassWriter extends ClassVisitor {
     }
     
     public DebuggingClassWriter(int flags) {
-	super(Constants.ASM_API, new ClassWriter(flags));
+	super(Constants.ASM_API,
+            // 创建了一个ClassWriter作为cv持有
+            new ClassWriter(flags));
     }
 
     public void visit(int version,
@@ -55,7 +57,9 @@ public class DebuggingClassWriter extends ClassVisitor {
                       String signature,
                       String superName,
                       String[] interfaces) {
+        // 将传入的name的/替换为.，然后赋值给自身的className
         className = name.replace('/', '.');
+        // 将传入的superName的/替换为.，然后赋值给自身的superName
         this.superName = superName.replace('/', '.');
         super.visit(version, access, name, signature, superName, interfaces);
     }
@@ -74,28 +78,40 @@ public class DebuggingClassWriter extends ClassVisitor {
         new java.security.PrivilegedAction() {
             public Object run() {
                 
-                
+                // 调用持有的ClassVisitor的toByteArray方法，默认持有的cv是ClassWriter
                 byte[] b = ((ClassWriter) DebuggingClassWriter.super.cv).toByteArray();
+                // 如果debugLocation不为null的话
                 if (debugLocation != null) {
+                    // 将持有的className的.转换为文件分隔符，得到路径
                     String dirs = className.replace('.', File.separatorChar);
                     try {
+                        // 然后使用debugLocation + 文件分隔符 + dirs构成的路径的父路径作为目录路径，然后创建目录
                         new File(debugLocation + File.separatorChar + dirs).getParentFile().mkdirs();
-                        
+
+                        // 在dirs后拼接.class作为child路径 以debugLocation作为parent路径，然后生成一个文件对象
                         File file = new File(new File(debugLocation), dirs + ".class");
+                        // 将class文件的字节码输出到对应的文件中
                         OutputStream out = new BufferedOutputStream(new FileOutputStream(file));
                         try {
                             out.write(b);
                         } finally {
                             out.close();
                         }
-                        
+
+                        // 如果traceClassVisitor的构造器不为null
                         if (traceCtor != null) {
+                            // 在dirs后面拼接.asm作为child路径 以debugLocation作为parent路径，生成一个文件对象
                             file = new File(new File(debugLocation), dirs + ".asm");
+                            // 打开文件流
                             out = new BufferedOutputStream(new FileOutputStream(file));
                             try {
+                                // 将class文件的二进制封装成classReader
                                 ClassReader cr = new ClassReader(b);
+                                // 将输出流包装成PrintWriter
                                 PrintWriter pw = new PrintWriter(new OutputStreamWriter(out));
+                                // 使用PrintWriter初始化TraceClassVisitor
                                 ClassVisitor tcv = (ClassVisitor)traceCtor.newInstance(new Object[]{null, pw});
+                                // 然后访问classReader，将内容输出到asm文件中
                                 cr.accept(tcv, 0);
                                 pw.flush();
                             } finally {

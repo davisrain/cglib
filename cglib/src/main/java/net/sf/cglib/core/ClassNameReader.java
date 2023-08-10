@@ -29,7 +29,8 @@ public class ClassNameReader {
     private static class EarlyExitException extends RuntimeException { }
     
     public static String getClassName(ClassReader r) {
-    
+
+        // 获取到类名之后返回第一个元素，即this_class
         return getClassInfo(r)[0];
       
     }
@@ -38,6 +39,7 @@ public class ClassNameReader {
         final List array = new ArrayList();
         try {
             r.accept(new ClassVisitor(Constants.ASM_API, null) {
+                // 创建一个ClassVisitor，去获取class文件的this_class super_class interface的名称，并且将/转换为.
                 public void visit(int version,
                                   int access,
                                   String name,

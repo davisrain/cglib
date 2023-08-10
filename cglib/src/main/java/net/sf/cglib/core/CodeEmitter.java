@@ -76,7 +76,9 @@ public class CodeEmitter extends LocalVariablesSorter {
             this.access = access;
             this.sig = sig;
             this.exceptionTypes = exceptionTypes;
+            // 判断方法是否是static，如果是localOffset为0，否则为1
             localOffset = TypeUtils.isStatic(access) ? 0 : 1;
+            // 根据方法描述符获取方法的参数Type数组
             argumentTypes = sig.getArgumentTypes();
         }
 
@@ -104,7 +106,9 @@ public class CodeEmitter extends LocalVariablesSorter {
 
     CodeEmitter(ClassEmitter ce, MethodVisitor mv, int access, Signature sig, Type[] exceptionTypes) {
         super(access, sig.getDescriptor(), mv);
+        // 将ClassEmitter赋值给自身的ce属性持有
         this.ce = ce;
+        // 根据classInfo access sig exceptionTypes创建一个State，该类是MethodInfo的子类，持有了一些方法的信息
         state = new State(ce.getClassInfo(), access, sig, exceptionTypes);
     }
 
@@ -219,19 +223,35 @@ public class CodeEmitter extends LocalVariablesSorter {
     public void aconst_null() { mv.visitInsn(Constants.ACONST_NULL); }
 
     public void swap(Type prev, Type type) {
+        // 判断type的size和prev的size，如果两者都占用一个slot的话，那么直接调用swap字节码，将栈顶的两个操作数交换位置
         if (type.getSize() == 1) {
             if (prev.getSize() == 1) {
-                swap(); // same as dup_x1(), pop();
-            } else {
+                swap(); // same as dup_x1(), pop(); 这个地方等同于dup_x1 pop的原因是dup_x1的含义是复制栈顶的一个字，然后将复制的字和弹出的两个字都压回栈顶
+                // 比如栈顶是v1 v2，那么调用dup_x1之后是 v2 v1 v2，再调用pop之后就是v2 v1
+            }
+            // 如果prev的size为2的话，dup_x2的含义是复制栈顶的一个字，然后将复制出的字和弹出的三个字都压回栈顶
+            // 比如栈顶是v1 v2 v3，那么dup_x2之后是 v3 v1 v2 v3，再调用pop之后就是 v3 v1 v2
+            else {
                 dup_x2();
                 pop();
             }
-        } else {
+        }
+        // 如果type的size是2
+        else {
+            // prev的size是1
             if (prev.getSize() == 1) {
+                // dup2_x1是复制栈顶的两个字的内容，然后将弹出的三个字压回栈顶
+                // 即栈顶如果是v1 v2 v3，dup2_x1之后是v2 v3 v1 v2 v3
                 dup2_x1();
+                // 然后再弹出两个字的内容，就是v2 v3 v1
                 pop2();
-            } else {
+            }
+            // 如果prev的size也是2
+            else {
+                // dup2_x2是复制栈顶的两个字的内容，然后将弹出的四个字压回栈顶
+                // 即栈顶如果是v1 v2 v3 v4，dup2_x2之后是v3 v4 v1 v2 v3 v4
                 dup2_x2();
+                // 然后再弹出两个字，就是v3 v4 v1 v2
                 pop2();
             }
         }
@@ -296,15 +316,24 @@ public class CodeEmitter extends LocalVariablesSorter {
     }
 
     public void push(int i) {
+        // 如果i小于-1，调用持有的mv的visitLdcInsn，使用ldc字节码，加载常量池中CONSTANT_Integer_info类型的常量
         if (i < -1) {
             mv.visitLdcInsn(new Integer(i));
-        } else if (i <= 5) {
+        }
+        // 如果i是属于-1到5的范围，那么可以使用iconst_m1 iconst_0 iconst_1 iconst_2 iconst_3 iconst_4 iconst_5这几个字节码
+        else if (i <= 5) {
             mv.visitInsn(TypeUtils.ICONST(i));
-        } else if (i <= Byte.MAX_VALUE) {
+        }
+        // 如果i大于5小于等于byte的最大值，那么可以使用bipush字节码，表示将对应大小的int值压入栈顶
+        else if (i <= Byte.MAX_VALUE) {
             mv.visitIntInsn(Constants.BIPUSH, i);
-        } else if (i <= Short.MAX_VALUE) {
+        }
+        // 如果i大于byte的最大值小于等于short的最大值，那么可以使用sipush字节码
+        else if (i <= Short.MAX_VALUE) {
             mv.visitIntInsn(Constants.SIPUSH, i);
-        } else {
+        }
+        // 如果是其余情况，需要使用ldc字节码，加载常量池中CONSTANT_Integer_info类型的常量
+        else {
             mv.visitLdcInsn(new Integer(i));
         }
     }
@@ -353,9 +382,11 @@ public class CodeEmitter extends LocalVariablesSorter {
     }
     
     public void load_this() {
+        // 如果方法的访问修饰符存在static，报错，因为static方法中不存在this变量
         if (TypeUtils.isStatic(state.access)) {
             throw new IllegalStateException("no 'this' pointer within static method");
         }
+        // 调用methodVisitor的visitVarInsn方法，表示要使用aload指令加载第0个局部变量槽里的内容到操作数栈中
         mv.visitVarInsn(Constants.ALOAD, 0);
     }
     
@@ -363,6 +394,7 @@ public class CodeEmitter extends LocalVariablesSorter {
      * Pushes all of the arguments of the current method onto the stack.
      */
     public void load_args() {
+        // 调用load_args的重载方法，传入开始的参数位置 和 参数数量
         load_args(0, state.argumentTypes.length);
     }
 
@@ -377,10 +409,16 @@ public class CodeEmitter extends LocalVariablesSorter {
 
     // zero-based (see load_this)
     public void load_args(int fromArg, int count) {
+        // 计算fromArg之前的参数占用的slot的数量
+        // 然后再加上localOffset，就是应该加载的参数开始的slot的位置
         int pos = state.localOffset + skipArgs(fromArg);
+        // 然后从遍历需要加载的参数
         for (int i = 0; i < count; i++) {
+            // 获取到需要加载的参数的类型
             Type t = state.argumentTypes[fromArg + i];
+            // 然后从对应的slot位置去加载对应的参数
             load_local(t, pos);
+            // 然后将slot位置向后移动，根据刚才加载过的参数类型所占的slot数量
             pos += t.getSize();
         }
     }
@@ -395,6 +433,8 @@ public class CodeEmitter extends LocalVariablesSorter {
 
     private void load_local(Type t, int pos) {
         // TODO: make t == null ok?
+        // 通过type的getOpcode调整对应的load字节码，将其转换为适用于自身类型的字节码；
+        // 然后通过传入的pos从指定的slot加载局部变量
         mv.visitVarInsn(t.getOpcode(Constants.ILOAD), pos);
     }
 
@@ -416,18 +456,25 @@ public class CodeEmitter extends LocalVariablesSorter {
     }
 
     public void return_value() {
+        // 根据方法签名的返回类型Type获取到对应类型的return字节码，如果返回类型是void，那么得到的是return
         mv.visitInsn(state.sig.getReturnType().getOpcode(Constants.IRETURN));
     }
 
     public void getfield(String name) {
+        // 根据name从classEmitter的fieldInfoMap中获取对应的fieldInfo
         ClassEmitter.FieldInfo info = ce.getFieldInfo(name);
+        // 根据fieldInfo的访问修饰符是否是static的，选择getstatic或者getfield字节码
         int opcode = TypeUtils.isStatic(info.access) ? Constants.GETSTATIC : Constants.GETFIELD;
+        // 然后向code中添加获取字段的字节码
         emit_field(opcode, ce.getClassType(), name, info.type);
     }
     
     public void putfield(String name) {
+        // 根据name获取到FieldInfo
         ClassEmitter.FieldInfo info = ce.getFieldInfo(name);
+        // 如果字段的访问修饰符是static的，那么使用putstatic，否则使用putfield
         int opcode = TypeUtils.isStatic(info.access) ? Constants.PUTSTATIC : Constants.PUTFIELD;
+        // 调用emit_field，对字段进行操作，其中传入的class的type，字段的name和字段的type
         emit_field(opcode, ce.getClassType(), name, info.type);
     }
 
@@ -480,10 +527,12 @@ public class CodeEmitter extends LocalVariablesSorter {
     }
 
     public void invoke_constructor(Type type) {
+        // 获取参数为空的构造器方法签名，然后调用invoke_constructor的重载方法
         invoke_constructor(type, CSTRUCT_NULL);
     }
 
     public void super_invoke_constructor() {
+        // 调用invoke_constructor，其中传入classEmitter持有的superType
         invoke_constructor(ce.getSuperType());
     }
     
@@ -492,11 +541,13 @@ public class CodeEmitter extends LocalVariablesSorter {
     }
 
     private void emit_invoke(int opcode, Type type, Signature sig, boolean isInterface) {
+        // 如果方法名为<init> 并且 字节码是invokevirtual 或者 invokestatic，报错
         if (sig.getName().equals(Constants.CONSTRUCTOR_NAME) &&
             ((opcode == Constants.INVOKEVIRTUAL) ||
              (opcode == Constants.INVOKESTATIC))) {
             // TODO: error
         }
+        // 调用mv的visitMethodInsn，将字节码 类型名 方法名 方法描述符都传入
         mv.visitMethodInsn(opcode,
                            type.getInternalName(),
                            sig.getName(),
@@ -530,6 +581,7 @@ public class CodeEmitter extends LocalVariablesSorter {
     }
 
     public void invoke_constructor(Type type, Signature sig) {
+        // 向code中添加invokespecial字节码，其中type和方法签名同时传入
         emit_invoke(Constants.INVOKESPECIAL, type, sig, false);
     }
 
@@ -551,11 +603,13 @@ public class CodeEmitter extends LocalVariablesSorter {
 
     private void emit_type(int opcode, Type type) {
         String desc;
+        // 根据type的类型获取对应的类型描述符
         if (TypeUtils.isArray(type)) {
             desc = type.getDescriptor();
         } else {
             desc = type.getInternalName();
         }
+        // 调用mv的visitTypeInsn，将字节码和描述符都传入
         mv.visitTypeInsn(opcode, desc);
     }
 
@@ -577,6 +631,7 @@ public class CodeEmitter extends LocalVariablesSorter {
     }
     
     public Local make_local(Type type) {
+        // 根据local占用的变量slot开始的位置 和 type封装成一个local返回
         return new Local(newLocal(type.getSize()), type);
     }
 
@@ -599,50 +654,77 @@ public class CodeEmitter extends LocalVariablesSorter {
     }
 
     public void process_switch(int[] keys, ProcessSwitchCallback callback) {
+        // 定义一个密度变量
         float density;
+        // 如果数组长度为0，density赋值为0
         if (keys.length == 0) {
             density = 0;
-        } else {
+        }
+        // 否则density为 数组长度 / (数组最后一个元素 - 数组第一个元素 + 1)
+        else {
             density = (float)keys.length / (keys[keys.length - 1] - keys[0] + 1);
         }
+        // 调用重载方法，如果密度大于等于0.5，useTable为true，否则为false
         process_switch(keys, callback, density >= 0.5f);
     }
 
     public void process_switch(int[] keys, ProcessSwitchCallback callback, boolean useTable) {
+        // 如果数组没有排序的话，报错
         if (!isSorted(keys))
             throw new IllegalArgumentException("keys to switch must be sorted ascending");
+        // 声明两个标签
         Label def = make_label();
         Label end = make_label();
 
         try {
+            // 如果数组长度大于0
             if (keys.length > 0) {
+                // 获取到最大值到最小值的范围
                 int len = keys.length;
                 int min = keys[0];
                 int max = keys[len - 1];
                 int range = max - min + 1;
 
+                // 如果useTable标志为true
                 if (useTable) {
+                    // 按照range为长度声明一个Label数组
                     Label[] labels = new Label[range];
+                    // 将数组内的元素都填充为def标签
                     Arrays.fill(labels, def);
+                    // 然后遍历数组
                     for (int i = 0; i < len; i++) {
+                        // 根据对应的key值映射到数组下标，然后新建一个label
                         labels[keys[i] - min] = make_label();
                     }
+                    // 然后调用MethodVisitor的visitTableSwitchInsn方法
                     mv.visitTableSwitchInsn(min, max, def, labels);
+                    // 遍历对应的label数组
                     for (int i = 0; i < range; i++) {
                         Label label = labels[i];
+                        // 如果发现label不等于def标签的话
                         if (label != def) {
+                            // 将其位置标记
                             mark(label);
+                            // 调用callback的processCase方法，向标签中添加实际的switch逻辑
                             callback.processCase(i + min, end);
                         }
                     }
-                } else {
+                }
+                // 如果useTable为false
+                else {
+                    // 按照数组长度声明Label数组
                     Label[] labels = new Label[len];
+                    // 为数组的每一个下标创建一个Label
                     for (int i = 0; i < len; i++) {
                         labels[i] = make_label();
                     }
+                    // 然后调用MethodVisitor的visitLookupSwitchInsn方法
                     mv.visitLookupSwitchInsn(def, keys, labels);
+                    // 并且遍历Label数组
                     for (int i = 0; i < len; i++) {
+                        // 标记每一个标签的位置
                         mark(labels[i]);
+                        // 调用callback的processCase方法，向标签中添加实际的switch逻辑
                         callback.processCase(keys[i], end);
                     }
                 }
@@ -824,6 +906,7 @@ public class CodeEmitter extends LocalVariablesSorter {
      * unboxed primitive value becomes zero.
      */
     public void unbox_or_zero(Type type) {
+        // 如果type是原始类型的，进行拆箱操作
         if (TypeUtils.isPrimitive(type)) {
             if (type != Type.VOID_TYPE) {
                 Label nonNull = make_label();
@@ -837,13 +920,17 @@ public class CodeEmitter extends LocalVariablesSorter {
                 unbox(type);
                 mark(end);
             }
-        } else {
+        }
+        // 如果是引用类型，根据type进行强转
+        else {
             checkcast(type);
         }
     }
 
     public void visitMaxs(int maxStack, int maxLocals) {
+        // 如果方法的访问修饰符不是abstract的
         if (!TypeUtils.isAbstract(state.access)) {
+            // 调用持有的methodVisitor的visitMaxs方法，其中maxStack和maxLocals都传入0
             mv.visitMaxs(0, 0);
         }
     }

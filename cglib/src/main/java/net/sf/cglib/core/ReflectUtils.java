@@ -47,8 +47,10 @@ public class ReflectUtils {
         Object unsafe;
         Throwable throwable = null;
         try {
+            // 获取ReflectUtils类的protectionDomain
             protectionDomain = getProtectionDomain(ReflectUtils.class);
             try {
+                // 获取到ClassLoader的defineClass方法
                 defineClass = (Method) AccessController.doPrivileged(new PrivilegedExceptionAction() {
                     public Object run() throws Exception {
                             Class loader = Class.forName("java.lang.ClassLoader"); // JVM crash w/o this
@@ -62,12 +64,15 @@ public class ReflectUtils {
                             return defineClass;
                     }
                 });
+                // 如果获取到了，将defineClassUnsafe和unsafe都置为null
                 defineClassUnsafe = null;
                 unsafe = null;
             } catch (Throwable t) {
                 // Fallback on Jigsaw where this method is not available.
                 throwable = t;
+                // 如果抛出异常，将defineClass置为null
                 defineClass = null;
+                // 获取到Unsafe对象
                 unsafe = AccessController.doPrivileged(new PrivilegedExceptionAction() {
                     public Object run() throws Exception {
                         Class u = Class.forName("sun.misc.Unsafe");
@@ -76,6 +81,7 @@ public class ReflectUtils {
                         return theUnsafe.get(null);
                     }
                 });
+                // 获取到unsafe类的defineClass方法，赋值给defineClassUnsafe
                 Class u = Class.forName("sun.misc.Unsafe");
                 defineClassUnsafe = u.getMethod("defineClass",
                                         new Class[]{ String.class,
@@ -85,6 +91,7 @@ public class ReflectUtils {
                                                      ClassLoader.class,
                                                      ProtectionDomain.class });
             }
+            // 获取到Object的非final和非static且不是finalize方法的其他方法，放入OBJECT_METHODS集合中
             AccessController.doPrivileged(new PrivilegedExceptionAction() {
                 public Object run() throws Exception {
                     Method[] methods = Object.class.getDeclaredMethods();
@@ -99,6 +106,7 @@ public class ReflectUtils {
                 }
             });
         } catch (Throwable t) {
+            // 如果这一步出现异常，将所有元素都置为null
             if (throwable == null) {
                 throwable = t;
             }
@@ -107,6 +115,7 @@ public class ReflectUtils {
             defineClassUnsafe = null;
             unsafe = null;
         }
+        // 将得到的内容赋值给对应的属性
         PROTECTION_DOMAIN = protectionDomain;
         DEFINE_CLASS = defineClass;
         DEFINE_CLASS_UNSAFE = defineClassUnsafe;
@@ -160,13 +169,19 @@ public class ReflectUtils {
     }
         
     public static Signature getSignature(Member member) {
+        // 如果member是Method类型的
         if (member instanceof Method) {
-            return new Signature(member.getName(), Type.getMethodDescriptor((Method)member));
-        } else if (member instanceof Constructor) {
-            Type[] types = TypeUtils.getTypes(((Constructor)member).getParameterTypes());
+            // 调用Type.getMethodDescriptor方法获取方法描述符，然后根据方法名封装一个Signature返回
+            return new Signature(member.getName(), Type.getMethodDescriptor((Method) member));
+        }
+        // 如果member是Constructor类型的
+        else if (member instanceof Constructor) {
+            // 先根据参数类型返回Type数组
+            Type[] types = TypeUtils.getTypes(((Constructor) member).getParameterTypes());
+            // 然后根据返回值VOID_TYPE和参数Type数组构建一个方法描述符，然后和<init>方法名一起封装一个Signature返回
             return new Signature(Constants.CONSTRUCTOR_NAME,
-                                 Type.getMethodDescriptor(Type.VOID_TYPE, types));
-                
+                    Type.getMethodDescriptor(Type.VOID_TYPE, types));
+
         } else {
             throw new IllegalArgumentException("Cannot get signature of a field");
         }
@@ -409,17 +424,23 @@ public class ReflectUtils {
         
     public static List addAllMethods(final Class type, final List list) {
             
-            
+        // 如果type等于Object.class，向list中添加OBJECT_METHODS
         if (type == Object.class) {
             list.addAll(OBJECT_METHODS);
-        } else
+        }
+        // 如果type等于其他类型，向list添加type中声明的方法
+        else
             list.addAll(java.util.Arrays.asList(type.getDeclaredMethods()));
 
+        // 然后获取type的父类
         Class superclass = type.getSuperclass();
+        // 如果父类存在，递归调用addAllMethods方法
         if (superclass != null) {
             addAllMethods(superclass, list);
         }
+        // 然后获取type的接口数组
         Class[] interfaces = type.getInterfaces();
+        // 遍历接口数组，递归调用addAllMethods方法
         for (int i = 0; i < interfaces.length; i++) {
             addAllMethods(interfaces[i], list);
         }
@@ -454,17 +475,24 @@ public class ReflectUtils {
 
     public static Class defineClass(String className, byte[] b, ClassLoader loader, ProtectionDomain protectionDomain) throws Exception {
         Class c;
+        // 如果ClassLoader的defineClass方法的反射对象存在，反射调用该方法
         if (DEFINE_CLASS != null) {
             Object[] args = new Object[]{className, b, new Integer(0), new Integer(b.length), protectionDomain };
             c = (Class)DEFINE_CLASS.invoke(loader, args);
-        } else if (DEFINE_CLASS_UNSAFE != null) {
+        }
+        // 如果ClassLoader的defineClass方法不存在，而unsafe的defineClass方法的反射对象存在，反射调用该方法
+        else if (DEFINE_CLASS_UNSAFE != null) {
             Object[] args = new Object[]{className, b, new Integer(0), new Integer(b.length), loader, protectionDomain };
             c = (Class)DEFINE_CLASS_UNSAFE.invoke(UNSAFE, args);
-        } else {
+        }
+        // 其他情况报错，并且将加载defineClass反射对象抛出的异常包装到CodeGenerationException中返回
+        else {
             throw new CodeGenerationException(THROWABLE);
         }
         // Force static initializers to run.
+        // 强制将类进行初始化
         Class.forName(className, true, loader);
+        // 返回加载后的类
         return c;
     }
         

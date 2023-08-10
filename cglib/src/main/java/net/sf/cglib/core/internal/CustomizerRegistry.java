@@ -15,9 +15,12 @@ public class CustomizerRegistry {
     }
 
     public void add(KeyFactoryCustomizer customizer) {
+        // 获取customizer的类型
         Class<? extends KeyFactoryCustomizer> klass = customizer.getClass();
+        // 如果是registry持有的customizerTypes中任意一种
         for (Class type : customizerTypes) {
             if (type.isAssignableFrom(klass)) {
+                // 那么添加到customizer这个map中的对应的key的list中去
                 List<KeyFactoryCustomizer> list = customizers.get(type);
                 if (list == null) {
                     customizers.put(type, list = new ArrayList<KeyFactoryCustomizer>());

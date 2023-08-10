@@ -61,7 +61,9 @@ abstract public class FastClass
         }
         
         public FastClass create() {
+            // 设置namePrefix为type的全限定名
             setNamePrefix(type.getName());
+            // 调用父类的create方法，并且传入的key也为type的全限定名
             return (FastClass)super.create(type.getName());
         }
 
@@ -74,6 +76,7 @@ abstract public class FastClass
         }
 
         public void generateClass(ClassVisitor v) throws Exception {
+            // 初始化一个FastClassEmitter，根据className和type
             new FastClassEmitter(v, getClassName(), type);
         }
 

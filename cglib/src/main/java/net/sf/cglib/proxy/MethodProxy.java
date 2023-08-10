@@ -44,10 +44,11 @@ public class MethodProxy {
      * For internal use by {@link Enhancer} only; see the {@link net.sf.cglib.reflect.FastMethod} class
      * for similar functionality.
      */
-    public static MethodProxy create(Class c1, Class c2, String desc, String name1, String name2) {
+    public static MethodProxy create(/*declaringClass*/ Class c1, /*thisClass*/ Class c2, /*descriptor*/ String desc, /*originalName*/ String name1, /*implName*/ String name2) {
         MethodProxy proxy = new MethodProxy();
         proxy.sig1 = new Signature(name1, desc);
         proxy.sig2 = new Signature(name2, desc);
+        // 根据declaringClass 和 thisClass创建一个CreateInfo
         proxy.createInfo = new CreateInfo(c1, c2);
         return proxy;
     }
@@ -70,12 +71,23 @@ public class MethodProxy {
                 {
                     CreateInfo ci = createInfo;
 
+                    // 实例化一个FastClassInfo
                     FastClassInfo fci = new FastClassInfo();
+                    // 调用helper方法根据createInfo和createInfo持有的declaringClass创建出一个FastClass，
+                    // 赋值给FastClassInfo的f1属性
                     fci.f1 = helper(ci, ci.c1);
+                    // 调用helper方法根据createInfo和createInfo持有的thisClass创建出一个FastClass，
+                    // 赋值给FastClassInfo的f2属性
+                    // FastClass会持有一个实际的Class类型，然后将其声明的方法排序并按照switch的方式获取方法的index，
+                    // 然后根据index快速找到对应的方法反射对象，然后调用
                     fci.f2 = helper(ci, ci.c2);
+                    // 获取到原始方法签名对应的方法的index
                     fci.i1 = fci.f1.getIndex(sig1);
+                    // 获取到impl方法签名对应的方法的index
                     fci.i2 = fci.f2.getIndex(sig2);
+                    // 将fastClassInfo赋值给fci
                     fastClassInfo = fci;
+                    // 然后将createInfo置为null
                     createInfo = null;
                 }
             }
@@ -100,9 +112,13 @@ public class MethodProxy {
         
         public CreateInfo(Class c1, Class c2)
         {
+            // declaringClass
             this.c1 = c1;
+            // thisClass
             this.c2 = c2;
+            // 获取到正在创建代理类的Enhancer
             AbstractClassGenerator fromEnhancer = AbstractClassGenerator.getCurrent();
+            // 如果Enhancer不为null的话，将其namingPolicy和generatorStrategy还有attemptLoad都赋值给CreateInfo中对应的属性
             if (fromEnhancer != null) {
                 namingPolicy = fromEnhancer.getNamingPolicy();
                 strategy = fromEnhancer.getStrategy();
@@ -112,12 +128,17 @@ public class MethodProxy {
     }
 
     private static FastClass helper(CreateInfo ci, Class type) {
+        // 创建一个FastClass中的Generator，该Generator也继承于AbstractClassGenerator
         FastClass.Generator g = new FastClass.Generator();
+        // 将type设置进去
         g.setType(type);
+        // 将CreateInfo中的c2的类加载器设置进generator
         g.setClassLoader(ci.c2.getClassLoader());
+        // 将namingPolicy和generatorStrategy以及attemptLoad都设置进去
         g.setNamingPolicy(ci.namingPolicy);
         g.setStrategy(ci.strategy);
         g.setAttemptLoad(ci.attemptLoad);
+        // 然后调用其create方法，创建出一个FastClass类型出来
         return g.create();
     }
 
@@ -200,7 +221,10 @@ public class MethodProxy {
     public Object invoke(Object obj, Object[] args) throws Throwable {
         try {
             init();
+            // 获取到fastClassInfo
             FastClassInfo fci = fastClassInfo;
+            // 反射调用declaringClass中声明的方法的反射对象，如果obj是代理对象并且重写了该方法的话，那么会动态分派到代理对象上。
+            // 如果不是代理对象，那么会调用被代理对象的方法。即是根据obj这个对象的实际类型来进行动态分派的
             return fci.f1.invoke(fci.i1, obj, args);
         } catch (InvocationTargetException e) {
             throw e.getTargetException();
@@ -224,7 +248,10 @@ public class MethodProxy {
     public Object invokeSuper(Object obj, Object[] args) throws Throwable {
         try {
             init();
+            // 获取到fastClassInfo
             FastClassInfo fci = fastClassInfo;
+            // 然后调用代理对象的impl方法，即代理对象的CGLIB$ + originalMethodName + $ + index方法，该方法的逻辑就是invokespecial，
+            // 调用父类的原始方法名和相同参数类型对应的方法
             return fci.f2.invoke(fci.i2, obj, args);
         } catch (InvocationTargetException e) {
             throw e.getTargetException();

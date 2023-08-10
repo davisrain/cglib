@@ -42,7 +42,9 @@ implements ClassGenerator
     private static final boolean DEFAULT_USE_CACHE =
         Boolean.parseBoolean(System.getProperty("cglib.useCache", "true"));
 
+    // 默认是DefaultGeneratorStrategy
     private GeneratorStrategy strategy = DefaultGeneratorStrategy.INSTANCE;
+    // 默认是DefaultNamingPolicy
     private NamingPolicy namingPolicy = DefaultNamingPolicy.INSTANCE;
     private Source source;
     private ClassLoader classLoader;
@@ -73,6 +75,7 @@ implements ClassGenerator
          */
         private final WeakReference<ClassLoader> classLoader;
 
+        // 唯一名称判断，用于检查传入的name是否已经存在了
         private final Predicate uniqueNamePredicate = new Predicate() {
             public boolean evaluate(Object name) {
                 return reservedClassNames.contains(name);
@@ -93,7 +96,9 @@ implements ClassGenerator
             Function<AbstractClassGenerator, Object> load =
                     new Function<AbstractClassGenerator, Object>() {
                         public Object apply(AbstractClassGenerator gen) {
+                            // 调用generator的generate方法，将classloaderData传入
                             Class klass = gen.generate(ClassLoaderData.this);
+                            // 将得到的class进行包装，默认实现是包装为WeakReference
                             return gen.wrapCachedClass(klass);
                         }
                     };
@@ -113,10 +118,16 @@ implements ClassGenerator
         }
 
         public Object get(AbstractClassGenerator gen, boolean useCache) {
+            // 如果不使用缓存
             if (!useCache) {
+                // 直接调用generator的generate方法，将classLoaderData传入
               return gen.generate(ClassLoaderData.this);
-            } else {
+            }
+            // 如果要使用缓存
+            else {
+                // 尝试从generatedClasses中获取对应的value
               Object cachedValue = generatedClasses.get(gen);
+              // 然后调用unwrapCachedValue将获取的value进行解包装，然后返回
               return gen.unwrapCachedValue(cachedValue);
             }
         }
@@ -154,6 +165,7 @@ implements ClassGenerator
     }
 
     private String generateClassName(Predicate nameTestPredicate) {
+        // 使用自身的namingPolicy获取要生成的代理类的类名，传入namePrefix，source.name，以及key作为参数，并且传入了一个Predicate用于检验类名
         return namingPolicy.getClassName(namePrefix, source.name, key, nameTestPredicate);
     }
 
@@ -275,14 +287,21 @@ implements ClassGenerator
 
     protected Object create(Object key) {
         try {
+            // 获取classloader
             ClassLoader loader = getClassLoader();
+            // 尝试从缓存中获取classloader对应的classloaderData
             Map<ClassLoader, ClassLoaderData> cache = CACHE;
             ClassLoaderData data = cache.get(loader);
+            // 如果缓存未命中
             if (data == null) {
+                // 加锁
                 synchronized (AbstractClassGenerator.class) {
+                    // double check
                     cache = CACHE;
                     data = cache.get(loader);
+                    // 如果缓存仍然未命中
                     if (data == null) {
+                        // 根据classloader创建一个classLoaderData，放入缓存中
                         Map<ClassLoader, ClassLoaderData> newCache = new WeakHashMap<ClassLoader, ClassLoaderData>(cache);
                         data = new ClassLoaderData(loader);
                         newCache.put(loader, data);
@@ -290,11 +309,16 @@ implements ClassGenerator
                     }
                 }
             }
+            // 将传入的key设置进自身属性中
             this.key = key;
+            // 调用classloaderData的get方法，最后会调用到abstractClassGenerator的generate方法，
+            // 然后根据generatorStrategy调用到generator的generateClass方法，再通过defineClass加载为类对象
             Object obj = data.get(this, getUseCache());
+            // 如果obj是class类型的，调用firstInstance方法进行实例化，该方法是一个模板方法，由子类实现
             if (obj instanceof Class) {
                 return firstInstance((Class) obj);
             }
+            // 如果不是class类型的，调用nextInstance方法返回，该方法也是一个模板方法
             return nextInstance(obj);
         } catch (RuntimeException e) {
             throw e;
@@ -307,38 +331,54 @@ implements ClassGenerator
 
     protected Class generate(ClassLoaderData data) {
         Class gen;
+        // 获取当前ThreadLocal中保存的内容
         Object save = CURRENT.get();
+        // 将AbstractClassGenerator类型的自身实例存入ThreadLocal中
         CURRENT.set(this);
         try {
+            // 获取data的classloader
             ClassLoader classLoader = data.getClassLoader();
+            // 如果classloader为null，报错
             if (classLoader == null) {
                 throw new IllegalStateException("ClassLoader is null while trying to define class " +
                         getClassName() + ". It seems that the loader has been expired from a weak reference somehow. " +
                         "Please file an issue at cglib's issue tracker.");
             }
             synchronized (classLoader) {
-              String name = generateClassName(data.getUniqueNamePredicate());              
-              data.reserveName(name);
-              this.setClassName(name);
+                // 根据namingPolicy生成代理类的类名
+                String name = generateClassName(data.getUniqueNamePredicate());
+                // 将生成的类名保存进classloaderData的reserveNames集合中，以便进行类名唯一性的判断
+                data.reserveName(name);
+                // 设置类名
+                this.setClassName(name);
             }
+            // 尝试在generate之前根据类名去使用classloader去加载对应的类
             if (attemptLoad) {
                 try {
+                    // 如果加载成功，直接返回
                     gen = classLoader.loadClass(getClassName());
                     return gen;
                 } catch (ClassNotFoundException e) {
                     // ignore
+                    // 如果没有找到对应的类，忽略掉异常
                 }
             }
+            // 尝试用持有的generateStrategy去生成对应的class文件的字节数组，其中传入自身ClassGenerator作为参数
+            // 具体的逻辑会调用到generator的generateClass方法，向classWriter中生成class文件所需要的二进制
             byte[] b = strategy.generate(this);
+            // 使用一个ClassVisitor去读取class文件字节数组中this_class的名称，将/转换为.作为类名
             String className = ClassNameReader.getClassName(new ClassReader(b));
+            // 获取类的保护域
             ProtectionDomain protectionDomain = getProtectionDomain();
             synchronized (classLoader) { // just in case
+                // 根据是否存在保护域，选择不同的加载类对象的方法
                 if (protectionDomain == null) {
                     gen = ReflectUtils.defineClass(className, b, classLoader);
                 } else {
                     gen = ReflectUtils.defineClass(className, b, classLoader, protectionDomain);
                 }
             }
+            // 返回加载后的类
             return gen;
         } catch (RuntimeException e) {
             throw e;
@@ -347,6 +387,7 @@ implements ClassGenerator
         } catch (Exception e) {
             throw new CodeGenerationException(e);
         } finally {
+            // 最后将之前ThreadLocal中保存的内容设置回去
             CURRENT.set(save);
         }
     }

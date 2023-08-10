@@ -165,18 +165,30 @@ public class TypeUtils {
     }
 
     public static Signature parseSignature(String s) {
+        // 找到空格的位置
         int space = s.indexOf(' ');
+        // 找到左括号的位置
         int lparen = s.indexOf('(', space);
+        // 找到右括号的位置
         int rparen = s.indexOf(')', lparen);
+        // 获取返回值
         String returnType = s.substring(0, space);
+        // 获取方法名
         String methodName = s.substring(space + 1, lparen);
+        // 向sb中添加(符号
         StringBuffer sb = new StringBuffer();
         sb.append('(');
+        // 将左右括号内的内容按照,分隔，将其内容分别解析为描述符类型的字符串，然后添加进sb中
         for (Iterator it = parseTypes(s, lparen + 1, rparen).iterator(); it.hasNext();) {
             sb.append(it.next());
         }
+        // 添加)符号
         sb.append(')');
+        // 最后将returnType映射为描述符类型的字符串添加进sb中
         sb.append(map(returnType));
+        // 最后根据methodName 和 方法描述符封装为一个Signature对象返回。
+        // 比如void <init>() 方法就会被解析为methodName=<init> descriptor=()V;
+        // String parse(String) 会被解析为methodName=parse descriptor=(Ljava/lang/String;)Ljava/lang/String;
         return new Signature(methodName, sb.toString());
     }
 
@@ -205,6 +217,7 @@ public class TypeUtils {
     }
 
     public static Signature parseConstructor(String sig) {
+        // 解析<init>方法的signature
         return parseSignature("void <init>(" + sig + ")"); // TODO
     }
 
@@ -223,21 +236,31 @@ public class TypeUtils {
     }
 
     private static String map(String type) {
+        // 如果type是空字符串，直接返回
         if (type.equals("")) {
             return type;
         }
-        String t = (String)transforms.get(type);
+        // 如果能够从transforms中找到对应的类型
+        String t = (String) transforms.get(type);
+        // 返回t
         if (t != null) {
             return t;
-        } else if (type.indexOf('.') < 0) {
+        }
+        // 如果type中不存在.分隔符，说明是java基础类，在前面添加java.lang.
+        else if (type.indexOf('.') < 0) {
             return map("java.lang." + type);
-        } else {
+        }
+        // 如果是含有.的正常类名
+        else {
             StringBuffer sb = new StringBuffer();
             int index = 0;
+            // 将[]符号转换为前面[符号
             while ((index = type.indexOf("[]", index) + 1) > 0) {
                 sb.append('[');
             }
+            // 并且将后面的[]符号截取掉
             type = type.substring(0, type.length() - sb.length() * 2);
+            // 在前面添加上L 并且在后面添加；，将类名转换为描述符的形式
             sb.append('L').append(type.replace('.', '/')).append(';');
             return sb.toString();
         }

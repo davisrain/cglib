@@ -21,8 +21,12 @@ public class DefaultGeneratorStrategy implements GeneratorStrategy {
     public static final DefaultGeneratorStrategy INSTANCE = new DefaultGeneratorStrategy();
     
     public byte[] generate(ClassGenerator cg) throws Exception {
+        // 获取classVisitor，默认实现是生成一个DebuggingClassWriter
         DebuggingClassWriter cw = getClassVisitor();
+        // 调用transform方法先对classGenerator进行转换，默认是直接返回cg；
+        // 然后调用cg的generateClass方法，并且将classWriter传入
         transform(cg).generateClass(cw);
+        // 然后调用transform方法对classWriter持有的字节数组进行转换，默认是直接返回该字节数组
         return transform(cw.toByteArray());
     }
 

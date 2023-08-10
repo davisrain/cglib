@@ -53,10 +53,13 @@ class FastClassEmitter extends ClassEmitter {
         super(v);
 
         Type base = Type.getType(type);
+        // 根据className创建一个类，继承FastClass，不实现任何接口
         begin_class(Constants.V1_8, Constants.ACC_PUBLIC, className, FAST_CLASS, null, Constants.SOURCE_FILE);
 
         // constructor
+        // 声明一个带Class类型参数的<init>方法
         CodeEmitter e = begin_method(Constants.ACC_PUBLIC, CSTRUCT_CLASS, null);
+        // 然后调用父类的带参构造方法，然后返回
         e.load_this();
         e.load_args();
         e.super_invoke_constructor(CSTRUCT_CLASS);
@@ -64,16 +67,24 @@ class FastClassEmitter extends ClassEmitter {
         e.end_method();
 
         VisibilityPredicate vp = new VisibilityPredicate(type, false);
+        // 获取type以及父类和接口声明的方法
         List methods = ReflectUtils.addAllMethods(type, new ArrayList());
+        // 然后进行可见性过滤，将private和protected修饰的方法都过滤掉
         CollectionUtils.filter(methods, vp);
+        // 然后过滤掉重复的方法，如果方法签名相同，声明在前面的方法会保留下来，后面的方法会被拒绝掉(也就是父类或接口声明的方法会被过滤掉)，
+        // 但是如果子类实现的方法是一个桥接方法，用于改变父类中方法的可见性，那么子类的方法会被拒绝掉
         CollectionUtils.filter(methods, new DuplicatesPredicate());
+        // 获取type中声明的构造方法
         List constructors = new ArrayList(Arrays.asList(type.getDeclaredConstructors()));
+        // 将构造方法也按可见性过滤
         CollectionUtils.filter(constructors, vp);
         
         // getIndex(String)
+        // 声明一个getIndex(Signature)方法，传入一个方法签名，然后返回方法签名在方法集合中的index
         emitIndexBySignature(methods);
 
         // getIndex(String, Class[])
+        // 声明一个getIndex(String, Class[])方法，传入方法名和参数类型，返回对应方法在方法集合中的index
         emitIndexByClassArray(methods);
         
         // getIndex(Class[])
@@ -110,14 +121,19 @@ class FastClassEmitter extends ClassEmitter {
 
     // TODO: support constructor indices ("<init>")
     private void emitIndexBySignature(List methods) {
+        // 声明一个getIndex方法，参数类型是Signature
         CodeEmitter e = begin_method(Constants.ACC_PUBLIC, SIGNATURE_GET_INDEX, null);
+        // 将传入的方法集合都转换为Signature的String集合
         List signatures = CollectionUtils.transform(methods, new Transformer() {
             public Object transform(Object obj) {
                 return ReflectUtils.getSignature((Method)obj).toString();
             }
         });
+        // 加载方法第一个参数到操作数栈
         e.load_arg(0);
+        // 调用方法签名的toString方法
         e.invoke_virtual(Constants.TYPE_OBJECT, TO_STRING);
+        // 根据方法签名集合进行switch选择，找到传入的方法签名在方法集合中的index并返回
         signatureSwitchHelper(e, signatures);
         e.end_method();
     }
@@ -148,14 +164,18 @@ class FastClassEmitter extends ClassEmitter {
         ObjectSwitchCallback callback = new ObjectSwitchCallback() {
             public void processCase(Object key, Label end) {
                 // TODO: remove linear indexOf
+                // 获取String类型的key在方法签名集合中的index，然后压入操作数栈，并且返回
                 e.push(signatures.indexOf(key));
                 e.return_value();
             }
             public void processDefault() {
+                // 返回-1
                 e.push(-1);
                 e.return_value();
             }
         };
+        // 向方法中添加switch的逻辑，根据方法签名的hashcode进行比较，找到匹配的方法签名，然后返回其在方法签名集合中的index；
+        // 如果没找到，返回-1
         EmitUtils.string_switch(e,
                                 (String[])signatures.toArray(new String[signatures.size()]),
                                 Constants.SWITCH_STYLE_HASH,

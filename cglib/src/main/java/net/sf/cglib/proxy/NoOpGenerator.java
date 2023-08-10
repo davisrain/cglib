@@ -25,14 +25,19 @@ implements CallbackGenerator
     public static final NoOpGenerator INSTANCE = new NoOpGenerator();
 
     public void generate(ClassEmitter ce, Context context, List methods) {
+        // 遍历MethodInfo集合
         for (Iterator it = methods.iterator(); it.hasNext();) {
             MethodInfo method = (MethodInfo)it.next();
+            // 如果是桥接方法 或者 (方法原本的可见性是protected的，并且方法新的可见性是public的)
             if (TypeUtils.isBridge(method.getModifiers()) || (
                     TypeUtils.isProtected(context.getOriginalModifiers(method)) &&
                     TypeUtils.isPublic(method.getModifiers()))) {
+                // 在类中根据MethodInfo声明方法
                 CodeEmitter e = EmitUtils.begin_method(ce, method);
+                // 然后加载this引用，调用父类的相同签名的方法
                 e.load_this();
                 context.emitLoadArgsAndInvoke(e, method);
+                // 返回栈顶元素
                 e.return_value();
                 e.end_method();
             }

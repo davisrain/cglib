@@ -56,40 +56,56 @@ public class DuplicatesPredicate implements Predicate {
     // we avoid using them when filtering duplicates.
     Map scanned = new HashMap();
     Map suspects = new HashMap();
+    // 遍历传入的方法集合
     for (Object o : allMethods) {
       Method method = (Method) o;
+      // 创建一个MethodWrapperKey，里面持有了方法的名称，参数的类名集合以及返回值的类名，相当于是方法的签名
       Object sig = MethodWrapper.create(method);
+      // 查看map中是否存在对应的MethodWrapperKey
       Method existing = (Method) scanned.get(sig);
+      // 如果不存在，将其放入scanned集合中
       if (existing == null) {
         scanned.put(sig, method);
-      } else if (!suspects.containsKey(sig) && existing.isBridge() && !method.isBridge()) {
+      }
+      // 如果scanned这个map中已经存在对应的方法签名
+      // 并且 suspects这个map中不存在这个方法签名 并且 已存在的方法是桥接的 并且 该方法不是桥接的，那么将已经存在的签名放入suspects中
+      else if (!suspects.containsKey(sig) && existing.isBridge() && !method.isBridge()) {
         // TODO: this currently only will capture a single bridge. it will not work
         // if there's Child.bridge1 Middle.bridge2 Parent.concrete.  (we'd offer the 2nd bridge).
         // no idea if that's even possible tho...
         suspects.put(sig, existing);
       }
     }
-    
+
+    // 如果suspects不为空
     if (!suspects.isEmpty()) {
       Set classes = new HashSet();
+      // 使用rejected为参数创建一个UnnecessaryBridgeFinder
       UnnecessaryBridgeFinder finder = new UnnecessaryBridgeFinder(rejected);
+      // 遍历suspects的values
       for (Object o : suspects.values()) {
         Method m = (Method) o;
+        // 将方法的声明类添加进classes集合中
         classes.add(m.getDeclaringClass());
+        // 然后向finder中添加对应的suspectMethod
         finder.addSuspectMethod(m);
       }
+      // 遍历classes集合
       for (Object o : classes) {
         Class c = (Class) o;
         try {
+          // 获取classloader
           ClassLoader cl = getClassLoader(c);
           if (cl == null) {
             continue;
           }
+          // 加载class对应的class文件
           InputStream is = cl.getResourceAsStream(c.getName().replace('.', '/') + ".class");
           if (is == null) {
             continue;
           }
           try {
+            // 然后生成一个classReader，使用finder去访问它
             new ClassReader(is).accept(finder, ClassReader.SKIP_FRAMES | ClassReader.SKIP_DEBUG);
           } finally {
             is.close();
@@ -101,6 +117,7 @@ public class DuplicatesPredicate implements Predicate {
   }
 
   public boolean evaluate(Object arg) {
+    // 如果rejected集合中不包含这个方法 并且 将方法转换为MethodWrapperKey之后能够添加进unique集合中，满足条件，才不会被过滤掉
     return !rejected.contains(arg) && unique.add(MethodWrapper.create((Method) arg));
   }
   
@@ -127,6 +144,7 @@ public class DuplicatesPredicate implements Predicate {
     }
 
     void addSuspectMethod(Method m) {
+      // 以方法的Signature为key，放入methods这个map中
       methods.put(ReflectUtils.getSignature(m), m);
     }
 
@@ -141,17 +159,24 @@ public class DuplicatesPredicate implements Predicate {
     public MethodVisitor visitMethod(
         int access, String name, String desc, String signature, String[] exceptions) {
       Signature sig = new Signature(name, desc);
+      // 通过Signature从methods这个map中找到对应的方法
       final Method currentMethod = (Method) methods.remove(sig);
+      // 如果方法存在
       if (currentMethod != null) {
         currentMethodSig = sig;
         return new MethodVisitor(Constants.ASM_API) {
           public void visitMethodInsn(
               int opcode, String owner, String name, String desc, boolean itf) {
+            // 如果发现字节码是invokespecial 并且 currentMethodSig不为null
             if (opcode == Opcodes.INVOKESPECIAL && currentMethodSig != null) {
+              // 根据调用的name和desc生成一个新的Signature
               Signature target = new Signature(name, desc);
+              // 如果新的signature等于currentMethodSig，那么将当前currentMethod添加进拒绝集合中。
+              // 说明这是修改访问范围的桥接方法类型，需要将桥接方法加入到拒绝集合里面，将其过滤掉
               if (target.equals(currentMethodSig)) {
                 rejected.add(currentMethod);
               }
+              // 将currentMethodSig置为null
               currentMethodSig = null;
             }
           }

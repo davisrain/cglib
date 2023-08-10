@@ -24,6 +24,7 @@ import org.objectweb.asm.Label;
 import org.objectweb.asm.Type;
 
 public class EmitUtils {
+    // 解析参数为空的构造器的Signature，其中包含了构造器的name=<init> 以及descriptor=()V
     private static final Signature CSTRUCT_NULL =
       TypeUtils.parseConstructor("");
     private static final Signature CSTRUCT_THROWABLE =
@@ -76,20 +77,37 @@ public class EmitUtils {
     }
 
     public static void factory_method(ClassEmitter ce, Signature sig) {
+        // 根据sig创建一个工厂方法，会创建一个MethodWriter给ClassWriter的MethodWriter链表持有，
+        // 然后返回MethodWriter，给CodeEmitter的mv持有
         CodeEmitter e = ce.begin_method(Constants.ACC_PUBLIC, sig, null);
+        // 向method的code属性中添加new字节码，创建自身实例
         e.new_instance_this();
+        // 然后向method的code中添加字节码dup 复制栈顶的元素
         e.dup();
+        // 根据签名的参数类型，循环向method的code中插入对应的load字节码，加载局部变量表的参数
         e.load_args();
+        // 然后根据签名的参数类型生成一个以这些参数为参数的有参构造器的Signature
+        // 然后向code中插入调用自身的这个有参构造器的字节码
         e.invoke_constructor_this(TypeUtils.parseConstructor(sig.getArgumentTypes()));
+        // 向method的code中添加return相关的字节码
         e.return_value();
+        // 调用持有的mv的visitMaxs方法，计算max_stack max_locals 或者 stackMapFrame
         e.end_method();
+
+        // 向method的code插入的所有字节码就相当于java源码的 return new X(arg1, arg2, ...);逻辑
     }
 
     public static void null_constructor(ClassEmitter ce) {
+        // 调用ce的begin_method方法创建一个codeEmitter对象，
+        // 其中会向ClassWriter中创建一个MethodWriter，并且该methodWriter由CodeEmitter的mv持有
         CodeEmitter e = ce.begin_method(Constants.ACC_PUBLIC, CSTRUCT_NULL, null);
+        // 向method的code属性中添加aload_0的字节码
         e.load_this();
+        // 向method的code属性中添加invokespecial superType.<init>()V的字节码
         e.super_invoke_constructor();
+        // 直接向method的code属性中添加return 字节码
         e.return_value();
+        // 调用持有的mv的visitMaxs方法，计算max_stack max_locals 或者 stackMapFrame
         e.end_method();
     }
     
@@ -245,6 +263,7 @@ public class EmitUtils {
     }        
 
     static int[] getSwitchKeys(Map buckets) {
+        // 将buckets中的key转换为数组，并且进行排序
         int[] keys = new int[buckets.size()];
         int index = 0;
         for (Iterator it = buckets.keySet().iterator(); it.hasNext();) {
@@ -258,40 +277,64 @@ public class EmitUtils {
                                            final String[] strings,
                                            final ObjectSwitchCallback callback,
                                            final boolean skipEquals) throws Exception {
+        // 将传入的string数组映射为hashcode，以hashcode为key，value为hashcode相等的字符串组成的集合
+        // Map<Integer, List<String>>
         final Map buckets = CollectionUtils.bucket(Arrays.asList(strings), new Transformer() {
             public Object transform(Object value) {
                 return new Integer(value.hashCode());
             }
         });
+        // 声明两个标签
         final Label def = e.make_label();
         final Label end = e.make_label();
+        // 复制栈顶元素，即要进行switch的String类型的值
         e.dup();
+        // 获取该String的hashcode
         e.invoke_virtual(Constants.TYPE_OBJECT, HASH_CODE);
+        // 处理switch逻辑
         e.process_switch(getSwitchKeys(buckets), new ProcessSwitchCallback() {
             public void processCase(int key, Label ignore_end) throws Exception {
+                // 根据key也就是hashcode获取对应的String集合
                 List bucket = (List)buckets.get(new Integer(key));
                 Label next = null;
+                // 如果skipEquals为true并且集合中只有一个元素
                 if (skipEquals && bucket.size() == 1) {
+                    // 弹出栈顶元素，即进行switch的String类型变量
                     if (skipEquals)
                         e.pop();
+                    // 然后调用传入的ObjectSwitchCallback的processCase方法，将映射到的集合的第一个元素返回
                     callback.processCase((String)bucket.get(0), end);
-                } else {
+                }
+                // 如果skipEquals为false，或者集合中存在多个元素
+                else {
+                    // 那么需要遍历集合
                     for (Iterator it = bucket.iterator(); it.hasNext();) {
+                        // 获取到对应的string
                         String string = (String)it.next();
+                        // 如果next不为null的话，标记next标签
                         if (next != null) {
                             e.mark(next);
                         }
+                        // 如果集合还存在元素，那么将栈顶进行switch的元素复制一份再进行比较
                         if (it.hasNext()) {
                             e.dup();
                         }
+                        // 将当前遍历到的string压入操作数栈中
                         e.push(string);
+                        // 调用equals方法进行比较
                         e.invoke_virtual(Constants.TYPE_OBJECT, EQUALS);
+                        // 如果集合还存在元素，那么将栈顶的equals的结果同0进行比较，如果等于0，创建一个label，然后复制给next标签，跳转到next标签；
+                        // 如果不等于0，说明equals返回true，直接将栈顶的元素弹出
                         if (it.hasNext()) {
                             e.if_jump(e.EQ, next = e.make_label());
                             e.pop();
-                        } else {
+                        }
+                        // 如果集合中已经不存在元素了，比较结果等于0，跳转到def标签返回默认值；
+                        // 如果等于1，执行下面的语句
+                        else {
                             e.if_jump(e.EQ, def);
                         }
+                        // 调用传入的ObjectSwitchCallback的processCase方法
                         callback.processCase(string, end);
                     }
                 }
@@ -300,8 +343,10 @@ public class EmitUtils {
                 e.pop();
             }
         });
+        // 将default标签标记在这里
         e.mark(def);
         callback.processDefault();
+        // 将结束标签标记在这里
         e.mark(end);
     }
 
@@ -321,23 +366,36 @@ public class EmitUtils {
     }
 
     private static void load_class_helper(CodeEmitter e, final Type type) {
+        // 如果codeEmitter是CGLIB$STATICHOOK方法的
         if (e.isStaticHook()) {
             // have to fall back on non-optimized load
+            // 将type转换为className的形式，然后使用ldc加载对应的string常量到操作数栈顶
             e.push(TypeUtils.emulateClassGetName(type));
+            // 然后调用Class.forName方法加载类
             e.invoke_static(Constants.TYPE_CLASS, FOR_NAME);
-        } else {
+        }
+        // 如果codeEmitter不是CGLIB$STATICHOOK方法
+        else {
             ClassEmitter ce = e.getClassEmitter();
             String typeName = TypeUtils.emulateClassGetName(type);
 
             // TODO: can end up with duplicated field names when using chained transformers; incorporate static hook # somehow
+            // 生成一个字段名
             String fieldName = "CGLIB$load_class$" + TypeUtils.escapeType(typeName);
+            // 判断类中是否声明了该字段
             if (!ce.isFieldDeclared(fieldName)) {
+                // 如果没有，声明一个private final static Class类型的字段，名称使用fieldName
                 ce.declare_field(Constants.PRIVATE_FINAL_STATIC, fieldName, Constants.TYPE_CLASS, null);
+                // 然后获取到CGLIB$STATIHOOK方法的codeEmitter
                 CodeEmitter hook = ce.getStaticHook();
+                // 向栈顶添加ldc字节码，将类名从常量池压入栈顶
                 hook.push(typeName);
+                // 调用Class.forName方法
                 hook.invoke_static(Constants.TYPE_CLASS, FOR_NAME);
+                // 然后将得到的结果通过putstatic放入到刚才声明的字段中
                 hook.putstatic(ce.getClassType(), fieldName, Constants.TYPE_CLASS);
             }
+            // 然后调用getstatic 获取刚才声明的字段
             e.getfield(fieldName);
         }
     }
@@ -397,18 +455,29 @@ public class EmitUtils {
     }
     
     public static void hash_code(CodeEmitter e, Type type, int multiplier, final CustomizerRegistry registry) {
+        // 如果type是数组类型的，调用hash_array方法
         if (TypeUtils.isArray(type)) {
             hash_array(e, type, multiplier, registry);
-        } else {
+        }
+        // 如果不是
+        else {
+            // 交换栈顶的两个类型的值
             e.swap(Type.INT_TYPE, type);
+            // 然后将multiplier压入栈顶
             e.push(multiplier);
+            // 根据type类型获取对应的mul字节码，将栈顶的两个值相乘
             e.math(e.MUL, Type.INT_TYPE);
+            // 然后将栈顶的两个值交换
             e.swap(type, Type.INT_TYPE);
+            // 如果type是原始类型，调用hash_primitive
             if (TypeUtils.isPrimitive(type)) {
                 hash_primitive(e, type);
-            } else {
+            }
+            // 如果type是引用类型，调用hash_object
+            else {
                 hash_object(e, type, registry);
             }
+            // 然后将栈顶的两个值相加
             e.math(e.ADD, Type.INT_TYPE);
         }
     }
@@ -702,9 +771,13 @@ public class EmitUtils {
     }
 
     public static void load_method(CodeEmitter e, MethodInfo method) {
+        // 根据methodInfo获取方法的声明类的名称，然后调用Class.forName加载出类对象到操作数栈顶
         load_class(e, method.getClassInfo().getType());
+        // 将方法名压入操作数栈顶
         e.push(method.getSignature().getName());
+        // 然后将参数类型数组也压入操作数栈顶
         push_object(e, method.getSignature().getArgumentTypes());
+        // 然后调用Class的getDeclaredMethod方法，根据方法名和参数类型找到对应的Method对象，放入栈顶
         e.invoke_virtual(Constants.TYPE_CLASS, GET_DECLARED_METHOD);
     }
 

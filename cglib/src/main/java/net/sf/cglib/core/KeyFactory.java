@@ -159,18 +159,24 @@ abstract public class KeyFactory {
 
     public static KeyFactory create(ClassLoader loader, Class keyInterface, KeyFactoryCustomizer customizer,
                                     List<KeyFactoryCustomizer> next) {
+        // 创建一个Generator
         Generator gen = new Generator();
+        // 将keyInterface设置进generator中
         gen.setInterface(keyInterface);
 
+        // 如果customizer不为null的话，也添加进generator中去
         if (customizer != null) {
             gen.addCustomizer(customizer);
         }
+        // 如果next不为null且不为空的话，遍历里面的KeyFactoryCustomizer全部添加generator中
         if (next != null && !next.isEmpty()) {
             for (KeyFactoryCustomizer keyFactoryCustomizer : next) {
                 gen.addCustomizer(keyFactoryCustomizer);
             }
         }
+        // 设置generator的classloader为传入的参数loader
         gen.setClassLoader(loader);
+        // 然后调用generator的create方法创建一个KeyFactory出来
         return gen.create();
     }
 
@@ -180,6 +186,7 @@ abstract public class KeyFactory {
 
         private Class keyInterface;
         // TODO: Make me final when deprecated methods are removed
+        // 实例化一个CustomizerRegistry，并且传入Customizer 和 FieldTypeCustomizer作为CustomizerTypes
         private CustomizerRegistry customizers = new CustomizerRegistry(KNOWN_CUSTOMIZER_TYPES);
         private int constant;
         private int multiplier;
@@ -217,7 +224,9 @@ abstract public class KeyFactory {
         }
 
         public KeyFactory create() {
+            // 设置namePrefix为keyInterface的全限定名
             setNamePrefix(keyInterface.getName());
+            // 调用父类AbstractClassGenerator的create方法，传入keyInterface的全限名作为参数
             return (KeyFactory)super.create(keyInterface.getName());
         }
 
@@ -230,74 +239,119 @@ abstract public class KeyFactory {
         }
 
         protected Object firstInstance(Class type) {
+            // 使用默认构造器实例化
             return ReflectUtils.newInstance(type);
         }
 
         protected Object nextInstance(Object instance) {
+            // 直接返回传入的实例对象
             return instance;
         }
 
         public void generateClass(ClassVisitor v) {
+            // 创建一个ClassEmitter将传入的classVisitor包装起来
             ClassEmitter ce = new ClassEmitter(v);
-            
+
+            // 获取keyInterface中声明的newInstance方法，规定该接口只能有这么一个方法，如果有多个方法，在这里会报错；
+            // 如果方法名不是newInstance，也会报错
             Method newInstance = ReflectUtils.findNewInstance(keyInterface);
+            // 如果newInstance方法的返回值类型不是Object.class，也会报错
             if (!newInstance.getReturnType().equals(Object.class)) {
                 throw new IllegalArgumentException("newInstance method must return Object");
             }
 
+            // 获取newInstance方法的参数类型，然后将其转换为asm中的Type类型
             Type[] parameterTypes = TypeUtils.getTypes(newInstance.getParameterTypes());
-            ce.begin_class(Constants.V1_8,
-                           Constants.ACC_PUBLIC,
-                           getClassName(),
-                           KEY_FACTORY,
-                           new Type[]{ Type.getType(keyInterface) },
-                           Constants.SOURCE_FILE);
+            // 调用classEmitter的begin_class方法，设置classWriter中的major_version access_flag this_class super_class interfaces等属性
+            ce.begin_class(Constants.V1_8, // java版本号
+                           Constants.ACC_PUBLIC, // 访问修饰符
+                           getClassName(), // 类名
+                           KEY_FACTORY, // 父类的描述符
+                           new Type[]{ Type.getType(keyInterface) }, // 接口的描述符数组
+                           Constants.SOURCE_FILE); // sourceFile
+            // 创建一个无参构造器方法
             EmitUtils.null_constructor(ce);
+            // 根据newInstance这个方法的反射Method，获取对应的方法签名Signature
+            // 然后根据这个Signature和classEmitter，创建一个工厂方法，
+            // 该工厂方法的逻辑就等同于调用 自身的有参构造方法 然后返回。
             EmitUtils.factory_method(ce, ReflectUtils.getSignature(newInstance));
 
             int seed = 0;
+            // 向类中添加该类的 有参构造方法
             CodeEmitter e = ce.begin_method(Constants.ACC_PUBLIC,
                                             TypeUtils.parseConstructor(parameterTypes),
                                             null);
+            // 向method的code添加aload_0字节码
             e.load_this();
+            // 向code添加invokespecial superType.<init>:()V字节码
             e.super_invoke_constructor();
+            // 向code添加aload_0字节码
             e.load_this();
+            // 获取FieldTypeCustomizer类型的customizer集合
             List<FieldTypeCustomizer> fieldTypeCustomizers = getCustomizers(FieldTypeCustomizer.class);
+            // 遍历newInstance方法的参数的Type数组
             for (int i = 0; i < parameterTypes.length; i++) {
+                // 获取对应的Type
                 Type parameterType = parameterTypes[i];
                 Type fieldType = parameterType;
+                // 遍历fieldTypeCustomizer集合
                 for (FieldTypeCustomizer customizer : fieldTypeCustomizers) {
+                    // 调用customizer的getOutType方法获取自定义的fieldType
                     fieldType = customizer.getOutType(i, fieldType);
                 }
+                // 然后计算fieldType的hashcode，添加到seed中
                 seed += fieldType.hashCode();
+                // 向class中声明一个字段，访问修饰符为private final，name为Field_+i，描述符由type获取
                 ce.declare_field(Constants.ACC_PRIVATE | Constants.ACC_FINAL,
-                                 getFieldName(i),
-                                 fieldType,
-                                 null);
+                        // 获取fieldName为 FIELD_ + i
+                        getFieldName(i),
+                        fieldType,
+                        null);
+                // 向code添加dup字节码，复制栈顶的元素
                 e.dup();
+                // 向code添加load相关的字节码，将i对应的参数加载到操作数栈顶
                 e.load_arg(i);
+                // 遍历fieldTypeCustomizers集合
                 for (FieldTypeCustomizer customizer : fieldTypeCustomizers) {
+                    // 调用fieldTypeCustomizer的customize方法对field进行自定义处理
                     customizer.customize(e, i, parameterType);
                 }
+                // 向code添加putfield #字段常量索引 的字节码
                 e.putfield(getFieldName(i));
             }
+            // 根据方法的返回值类型 向code中插入对应类型的return字节码
             e.return_value();
+            // 计算方法的max_stack 和 max_locals 以及 stackMapFrame
             e.end_method();
+            // 通过以上代码可以得出，该类的有参构造方法就是将传入的参数都赋值给自身对应的属性，其中会包括FieldTypeCustomizer对字段的自定义
             
             // hash code
+            // 向类中插入hashcode方法
             e = ce.begin_method(Constants.ACC_PUBLIC, HASH_CODE, null);
+            // 如果constant不为0，直接将constant赋值给hc；
+            // 否则使用之前计算的seed对PRIMES数组求余，然后获取PRIMES数组对应元素的值
             int hc = (constant != 0) ? constant : PRIMES[(int)(Math.abs(seed) % PRIMES.length)];
+            // 如果multiplier不为0，直接将multiplier赋值给hm；
+            // 否则使用之前计算的seed乘以13然后对PRIMES数组取余，然后获取PRIMES数组对应元素的值
             int hm = (multiplier != 0) ? multiplier : PRIMES[(int)(Math.abs(seed * 13) % PRIMES.length)];
+            // 向code中插入将int类型的值压入栈顶相关的字节码 比如：iconst_m1 iconst_0~5 bipush sipush ldc ldc_w ldc2_w(该字节码是用于long或double的)
             e.push(hc);
+            // 遍历newInstance的方法参数
             for (int i = 0; i < parameterTypes.length; i++) {
+                // 向code中添加load_0字节码
                 e.load_this();
+                // 向code中添加获取字段的字节码 比如 getfield getstatic
                 e.getfield(getFieldName(i));
+                // 该方法内的hashcode的计算逻辑就是hc = hc * hm + hashcode(field), 然后进行下一次循环
                 EmitUtils.hash_code(e, parameterTypes[i], hm, customizers);
             }
+            // 向code中插入ireturn字节码
             e.return_value();
+            // 计算maxStack maxLocals stackMapFrame
             e.end_method();
 
             // equals
+            // 向类中插入equals方法
             e = ce.begin_method(Constants.ACC_PUBLIC, EQUALS, null);
             Label fail = e.make_label();
             e.load_arg(0);
@@ -319,6 +373,7 @@ abstract public class KeyFactory {
             e.end_method();
 
             // toString
+            // 向类中插入toString方法
             e = ce.begin_method(Constants.ACC_PUBLIC, TO_STRING, null);
             e.new_instance(Constants.TYPE_STRING_BUFFER);
             e.dup();
@@ -336,6 +391,7 @@ abstract public class KeyFactory {
             e.return_value();
             e.end_method();
 
+            // 调用classEmitter的end_class方法
             ce.end_class();
         }
 

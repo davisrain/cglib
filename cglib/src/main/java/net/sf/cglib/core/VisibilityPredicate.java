@@ -24,24 +24,34 @@ public class VisibilityPredicate implements Predicate {
     private boolean samePackageOk;
 
     public VisibilityPredicate(Class source, boolean protectedOk) {
+        // protected修饰的是否可见
         this.protectedOk = protectedOk;
         // same package is not ok for the bootstrap loaded classes.  In all other cases we are 
         // generating classes in the same classloader
+        // 同一个包下的是否可见
         this.samePackageOk = source.getClassLoader() != null;
+        // 获取包名
         pkg = TypeUtils.getPackageName(Type.getType(source));
     }
 
     public boolean evaluate(Object arg) {
         Member member = (Member)arg;
-		int mod = member.getModifiers();
+        int mod = member.getModifiers();
+        // 判断访问修饰符，如果是private的，返回false，表示不可见
         if (Modifier.isPrivate(mod)) {
             return false;
-        } else if (Modifier.isPublic(mod)) {
+        }
+        // 如果是public的，可见
+        else if (Modifier.isPublic(mod)) {
             return true;
-        } else if (Modifier.isProtected(mod) && protectedOk) {
+        }
+        // 如果是protected的，并且protectedOk是true，表示可见
+        else if (Modifier.isProtected(mod) && protectedOk) {
             // protected is fine if 'protectedOk' is true (for subclasses)
             return true;
-        } else {
+        }
+        // 如果是package的，并且samePackageOk是true，并且member的声明类的包名和pkg一致，表示可见
+        else {
             // protected/package private if the member is in the same package as the source class 
             // and we are generating into the same classloader.
             return samePackageOk 

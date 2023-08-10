@@ -63,13 +63,19 @@ public class LocalVariablesSorter extends MethodVisitor {
         final String desc,
         final MethodVisitor mv)
     {
+        // 将mv给父类MethodVisitor持有，作为被装饰的对象
         super(Constants.ASM_API, mv);
+        // 创建一个State类型
         state = new State();
+        // 根据方法描述符获取参数的Type数组
         Type[] args = Type.getArgumentTypes(desc);
+        // 如果方法是static的，state的nextLocal为0，否则为1
         state.nextLocal = ((Opcodes.ACC_STATIC & access) != 0) ? 0 : 1;
+        // 遍历参数对应的Type数组，将type的size添加到state的nextLocal上
         for (int i = 0; i < args.length; i++) {
             state.nextLocal += args[i].getSize();
         }
+        // 然后将state的nextLocal赋值给firstLocal属性
         firstLocal = state.nextLocal;
     }
 
@@ -116,8 +122,11 @@ public class LocalVariablesSorter extends MethodVisitor {
     // -------------
 
     protected int newLocal(final int size) {
+        // 获取state的nextLocal
         int var = state.nextLocal;
+        // 然后将nextLocal加上新的local占用局部变量slot的数量
         state.nextLocal += size;
+        // 然后原本的nextLocal
         return var;
     }
 

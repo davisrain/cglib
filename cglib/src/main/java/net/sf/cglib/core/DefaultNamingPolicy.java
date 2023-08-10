@@ -36,11 +36,16 @@ public class DefaultNamingPolicy implements NamingPolicy {
     private final static boolean STRESS_HASH_CODE = Boolean.getBoolean("net.sf.cglib.test.stressHashCodes");
     
     public String getClassName(String prefix, String source, Object key, Predicate names) {
+        // 如果前缀为null的话，使用net.sf.cglib.empty.Object
         if (prefix == null) {
             prefix = "net.sf.cglib.empty.Object";
-        } else if (prefix.startsWith("java")) {
+        }
+        // 如果前缀是以java开头的，在前缀前面加上$符号
+        else if (prefix.startsWith("java")) {
             prefix = "$" + prefix;
         }
+        // 基础名称 = 前缀 + $$ + source的最后一个.后面的内容 + tag(默认是ByCGLIB) + $$ + 根据是否要添加hashcode来决定是0还是key的hashcode
+        // 以EnhanceKey为例，base = net.sf.cglib.proxy.Enhancer$EnhancerKey$$KeyFactoryByCGLIB$$hashcode
         String base =
             prefix + "$$" + 
             source.substring(source.lastIndexOf('.') + 1) +
@@ -48,8 +53,10 @@ public class DefaultNamingPolicy implements NamingPolicy {
             Integer.toHexString(STRESS_HASH_CODE ? 0 : key.hashCode());
         String attempt = base;
         int index = 2;
+        // 如果predicate的evaluate为true的话，说明不符合条件，在attempt的后面添加_index，直到满足条件为止
         while (names.evaluate(attempt))
             attempt = base + "_" + index++;
+        // 返回类名
         return attempt;
     }
 
