@@ -124,8 +124,8 @@ class BridgeMethodResolver {
                             // get infinite recursion).  This would typically
                             // only happen when a bridge method is created to widen
                             // the visibility of a superclass' method.
-                            // 如果要调用的目标方法的签名和当前方法的签名不一致，将签名放入到resolved这个map中
-                            // 这种情况只会发生在重写一个桥接方法用于扩展它原方法的可见性的时候
+                            // 如果要调用的目标方法的签名和当前方法的签名不一致，将签名放入到resolved这个map中。
+                            // 签名一致的情况只会发生在重写一个桥接方法用于扩展它原方法的可见性的时候
                             if (!target.equals(currentMethod)) {
                                 resolved.put(currentMethod, target);
                             }

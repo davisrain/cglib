@@ -96,9 +96,13 @@ public class MethodProxy {
 
     private static class FastClassInfo
     {
+        // 根据方法的declaringClass生成的FastClass
         FastClass f1;
+        // 根据代理类thisClass生成的FastClass
         FastClass f2;
+        // 原始方法签名在declaringClass中的index
         int i1;
+        // CGLIB$originMethodName$index方法名对应的方法签名在thisClass中的index
         int i2;
     }
 
@@ -224,7 +228,8 @@ public class MethodProxy {
             // 获取到fastClassInfo
             FastClassInfo fci = fastClassInfo;
             // 反射调用declaringClass中声明的方法的反射对象，如果obj是代理对象并且重写了该方法的话，那么会动态分派到代理对象上。
-            // 如果不是代理对象，那么会调用被代理对象的方法。即是根据obj这个对象的实际类型来进行动态分派的
+            // 如果不是代理对象，那么会调用被代理对象的方法。即是根据obj这个对象的实际类型来进行动态分派的。
+            // 因此invoke方法即可以传入proxy代理对象，也可以传入target被代理对象，因此这两个对象中都有对应签名的方法，会根据实际传入的对象动态分派。
             return fci.f1.invoke(fci.i1, obj, args);
         } catch (InvocationTargetException e) {
             throw e.getTargetException();
@@ -251,7 +256,8 @@ public class MethodProxy {
             // 获取到fastClassInfo
             FastClassInfo fci = fastClassInfo;
             // 然后调用代理对象的impl方法，即代理对象的CGLIB$ + originalMethodName + $ + index方法，该方法的逻辑就是invokespecial，
-            // 调用父类的原始方法名和相同参数类型对应的方法
+            // 调用父类的原始方法名和相同参数类型对应的方法。
+            // 因此invokeSuper只能传入proxy代理对象，如果传入target被代理对象会报错，因为target对象中没有这种签名的方法
             return fci.f2.invoke(fci.i2, obj, args);
         } catch (InvocationTargetException e) {
             throw e.getTargetException();

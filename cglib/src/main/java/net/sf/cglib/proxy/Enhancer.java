@@ -587,7 +587,7 @@ public class Enhancer extends AbstractClassGenerator
         if (interfaceMethods != null) {
             // 并且forcePublic也不为null
             if (forcePublic != null) {
-                // 将interfaceMethods里面的元素全部跟过MethodWrapper包装起来，包装为MethodWrapperKey的set集合添加进forcePublic中
+                // 将interfaceMethods里面的元素全部通过MethodWrapper包装起来，包装为MethodWrapperKey的set集合添加进forcePublic中
                 forcePublic.addAll(MethodWrapper.createSet(interfaceMethods));
             }
             // 将interfaceMethods集合里的元素添加到methods集合中
@@ -619,7 +619,7 @@ public class Enhancer extends AbstractClassGenerator
         // Order is very important: must add superclass, then
         // its superclass chain, then each interface and
         // its superinterfaces.
-        // 遍历循环很重要，必须先添加superclass的方法，然后是superclassChain的方法，然后是interface的方法，再然后是superinterfaces的方法
+        // 遍历顺序很重要，必须先添加superclass的方法，然后是superclassChain的方法，然后是interface的方法，再然后是superinterfaces的方法
         // 创建三个集合来保存不同类型的方法
         List actualMethods = new ArrayList();
         List interfaceMethods = new ArrayList();
@@ -1354,7 +1354,8 @@ public class Enhancer extends AbstractClassGenerator
             }
         }
 
-        // 创建一个桥接方法解析器对declToBridge这个map进行解析，获得类中声明的用于扩展父类方法可见性的桥接方法的签名
+        // 创建一个桥接方法解析器对declToBridge这个map进行解析，获得类中声明的不是用于扩展父类方法可见性的桥接方法的签名；
+        // 其中key为子类桥接方法的签名，value为父类被桥接方法的签名。
         final Map<Signature, Signature> bridgeToTarget = new BridgeMethodResolver(declToBridge, getClassLoader()).resolveAll();
 
         Set<CallbackGenerator> seenGen = new HashSet();

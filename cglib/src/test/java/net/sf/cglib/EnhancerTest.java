@@ -11,6 +11,7 @@ public class EnhancerTest {
         System.setProperty("cglib.debugLocation", EnhancerTest.class.getResource("").getPath());
         Enhancer enhancer = new Enhancer();
         enhancer.setSuperclass(Dog.class);
+        enhancer.setInterfaces(new Class[]{CountryInfo.class});
         enhancer.setNamingPolicy(new CustomNamingPolicy());
         enhancer.setCallbackFilter(new CustomCallbackFilter());
         enhancer.setCallbackTypes(new Class[] {CustomMethodInterceptor.class, CountryInfoDispatcher.class, CustomFixedValue.class, NoOp.class});
@@ -19,7 +20,7 @@ public class EnhancerTest {
         Dog proxy = (Dog) proxyFactory.newInstance(new Callback[]{new CustomMethodInterceptor(), new CountryInfoDispatcher(), new CustomFixedValue(), NoOp.INSTANCE});
         proxy.eat();
         proxy.sleep();
-        System.out.println(proxy.getCountry());
+        System.out.println(((CountryInfo) proxy).getCountry());
         System.out.println(proxy.getFixedValue());
         System.out.println(proxy.doNothing());
     }
@@ -74,7 +75,7 @@ public class EnhancerTest {
     }
 
 
-    static class Dog implements CountryInfo {
+    static class Dog {
 
         public void eat() {
             System.out.println("dog is eating");
@@ -82,11 +83,6 @@ public class EnhancerTest {
 
         public void sleep() {
             System.out.println("dog is sleeping");
-        }
-
-        @Override
-        public String getCountry() {
-            return "Earth";
         }
 
         public String getFixedValue() {
