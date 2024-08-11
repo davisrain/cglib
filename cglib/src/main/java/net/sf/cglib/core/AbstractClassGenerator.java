@@ -46,15 +46,23 @@ implements ClassGenerator
     private GeneratorStrategy strategy = DefaultGeneratorStrategy.INSTANCE;
     // 默认是DefaultNamingPolicy
     private NamingPolicy namingPolicy = DefaultNamingPolicy.INSTANCE;
+    // source对象只包含一个name属性，表示的就是AbstractClassGenerator的来源。
+    // 比如可能是Enhancer 也可能是KeyFactory中的Generator
     private Source source;
     private ClassLoader classLoader;
+
+    // 生成的类的类名前缀
     private String namePrefix;
+    // 用于判断是否能够命中缓存的key，如果AbstractClassGenerator中的key相等的话，就能够使用缓存在
+    // ClassLoaderData里面的类，而不用再次进行类的创建了
     private Object key;
+    // 默认是使用缓存的，即会使用ClassLoaderData里面与key属性匹配的缓存
     private boolean useCache = DEFAULT_USE_CACHE;
     private String className;
     private boolean attemptLoad;
 
     protected static class ClassLoaderData {
+        // 用于保存已经解析过了的类名
         private final Set<String> reservedClassNames = new HashSet<String>();
 
         /**
@@ -65,6 +73,7 @@ implements ClassGenerator
          * <p>Note: the only way to access a class is to find it through generatedClasses cache, thus
          * the key should not expire as long as the class itself is alive (its classloader is alive).</p>
          */
+        // 注意：访问一个class的唯一方式是去通过generatedClasses缓存查找，因此如果class自身是存活状态的话，缓存对应的key就不会过期
         private final LoadingCache<AbstractClassGenerator, Object, Object> generatedClasses;
 
         /**
@@ -72,6 +81,11 @@ implements ClassGenerator
          * this classLoader reference should be weak otherwise it would make classLoader strongly reachable
          * and alive forever.
          * Reference queue is not required since the cleanup is handled by {@link WeakHashMap}.
+         *
+         * 因为ClassLoaderData被保存在一个弱引用的hashmap中，它的key，即classLoader是弱引用，因此这里的classloader也需要是弱引用。
+         * 否则的话，会将classloader变成强引用并一直存活
+         *
+         * reference queue是不需要的，因此cleanup操作会被weakHashMap处理
          */
         private final WeakReference<ClassLoader> classLoader;
 
@@ -82,6 +96,8 @@ implements ClassGenerator
             }
         };
 
+        // 包装一个函数操作作为常量。
+        // 具体逻辑是返回AbstractClassGenerator的key属性
         private static final Function<AbstractClassGenerator, Object> GET_KEY = new Function<AbstractClassGenerator, Object>() {
             public Object apply(AbstractClassGenerator gen) {
                 return gen.key;
@@ -92,7 +108,11 @@ implements ClassGenerator
             if (classLoader == null) {
                 throw new IllegalArgumentException("classLoader == null is not yet supported");
             }
+            // 为classloader创建一个弱引用
             this.classLoader = new WeakReference<ClassLoader>(classLoader);
+            // 包装一个函数操作，具体逻辑是：
+            // 1.调用AbstractClassGenerator的generate方法创建出代理类，该方法的参数就是ClassLoaderData自身
+            // 2.然后继续调用AbstractClassGenerator的wrapCachedClass方法对代理类进行包装
             Function<AbstractClassGenerator, Object> load =
                     new Function<AbstractClassGenerator, Object>() {
                         public Object apply(AbstractClassGenerator gen) {
@@ -102,6 +122,7 @@ implements ClassGenerator
                             return gen.wrapCachedClass(klass);
                         }
                     };
+            // 将getkey 和 load这两个函数操作封装成一个LoadingCache对象赋值给generatedClasses属性
             generatedClasses = new LoadingCache<AbstractClassGenerator, Object, Object>(GET_KEY, load);
         }
 

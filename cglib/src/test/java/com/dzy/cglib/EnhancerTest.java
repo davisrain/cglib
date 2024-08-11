@@ -1,4 +1,4 @@
-package net.sf.cglib;
+package com.dzy.cglib;
 
 import net.sf.cglib.core.DefaultNamingPolicy;
 import net.sf.cglib.proxy.*;
