@@ -72,6 +72,16 @@ public class Enhancer extends AbstractClassGenerator
     private static final Source SOURCE = new Source(Enhancer.class.getName());
     // 创建了一个实现了EnhancerKey接口 继承了KeyFactory的类，并且实现了接口的newInstance方法，该方法的逻辑就是调用自身的有参构造函数，
     // 将传入的参数都赋值给自身属性持有
+
+    // 该动态生成的类，既是KeyFactory，又是实际的Key，通过create方法创建出来的是所有字段都为null的KeyFactory，
+    // 当调用该对象的newInstance方法将参数都传入的时候，会生成一个新的对象，实际就是调用该类的有参构造方法，将参数全部赋值给字段，然后返回。
+
+    // 根据cglib默认的namePolicy，新生成的类的全限定名是:
+    // net.sf.cglib.proxy.Enhancer$EnhancerKey$$KeyFactoryByCGLIB$$hashcode("net.sf.cglib.proxy.Enhancer$EnhancerKey")
+    // 1.第一个$$前面的内容是AbstractClassGenerator的namePrefix属性
+    // 2.第一个$$ 和 第二个$$ 之间的KeyFactory 是AbstractClassGenerator的source.name(net.sf.cglib.core.KeyFactory)最后一个.后面的内容
+    // 3.byCGLIB是DefaultNamingPolicy的getTag方法的返回值
+    // 4.最后的hashcode，是计算AbstractClassGenerator持有的key属性的hashcode，KeyFactory.Generator的key就是对应的keyInterface的全限定名(net.sf.cglib.proxy.Enhancer$EnhancerKey)
     private static final EnhancerKey KEY_FACTORY =
       (EnhancerKey)KeyFactory.create(EnhancerKey.class, KeyFactory.HASH_ASM_TYPE, null);
 
@@ -139,6 +149,7 @@ public class Enhancer extends AbstractClassGenerator
       TypeUtils.parseSignature("void CGLIB$BIND_CALLBACKS(Object)");
 
     private EnhancerFactoryData currentData;
+    // currentKey表示当前的key对象
     private Object currentKey;
 
     /** Internal interface, only public due to ClassLoader issues. */
@@ -152,16 +163,24 @@ public class Enhancer extends AbstractClassGenerator
                                   Long serialVersionUID);
     }
 
+    // 代理类需要实现的接口数组
     private Class[] interfaces;
+    // 代理类的callback选择逻辑
     private CallbackFilter filter;
+    // 进行方法代理的callback数组
     private Callback[] callbacks;
+    // callback的类型数组
     private Type[] callbackTypes;
+    // 表示callbackType是已经被验证过的状态了
     private boolean validateCallbackTypes;
     // 当调用createClass方法的时候会被置为true
     private boolean classOnly;
+    // 代理类需要继承的父类
     private Class superclass;
     private Class[] argumentTypes;
     private Object[] arguments;
+    // 是否使用Factory的模式，默认为true，
+    // 表示代理类会实现Factory接口，通过Factory来创建真实的代理类
     private boolean useFactory = true;
     private Long serialVersionUID;
     private boolean interceptDuringConstruction = true;
@@ -368,6 +387,9 @@ public class Enhancer extends AbstractClassGenerator
     }
 
     private void validate() {
+        // 如果classOnly为true 但是callback不为null
+        // 或者classOnly为false 但是callback为null
+        // 报错
         if (classOnly ^ (callbacks == null)) {
             if (classOnly) {
                 throw new IllegalStateException("createClass does not accept callbacks");
@@ -375,12 +397,15 @@ public class Enhancer extends AbstractClassGenerator
                 throw new IllegalStateException("Callbacks are required");
             }
         }
+        // 如果classOnly为true 并且 callbackTypes为null 报错
         if (classOnly && (callbackTypes == null)) {
             throw new IllegalStateException("Callback types are required");
         }
+        // 如果validateCallbackTypes为true，将callbackTypes置为null，重新验证
         if (validateCallbackTypes) {
             callbackTypes = null;
         }
+        // 如果callback和callbackType同时存在，检验数量和类型是否匹配
         if (callbacks != null && callbackTypes != null) {
             if (callbacks.length != callbackTypes.length) {
                 throw new IllegalStateException("Lengths of callback and callback types array must be the same");
@@ -391,9 +416,12 @@ public class Enhancer extends AbstractClassGenerator
                     throw new IllegalStateException("Callback " + check[i] + " is not assignable to " + callbackTypes[i]);
                 }
             }
-        } else if (callbacks != null) {
+        }
+        // 如果只有callback存在，根据callback获取callbackType
+        else if (callbacks != null) {
             callbackTypes = CallbackInfo.determineTypes(callbacks);
         }
+        // 如果interfaces不为null，检查interface数组里面的类是否都是接口
         if (interfaces != null) {
             for (int i = 0; i < interfaces.length; i++) {
                 if (interfaces[i] == null) {
@@ -503,6 +531,7 @@ public class Enhancer extends AbstractClassGenerator
         // 将其赋值给currentKey属性
         this.currentKey = key;
         // 调用父类的create方法，并且将key传入
+        // 作为AbstractClassGenerator的key
         Object result = super.create(key);
         return result;
     }
@@ -619,7 +648,7 @@ public class Enhancer extends AbstractClassGenerator
         // Order is very important: must add superclass, then
         // its superclass chain, then each interface and
         // its superinterfaces.
-        // 遍历顺序很重要，必须先添加superclass的方法，然后是superclassChain的方法，然后是interface的方法，再然后是superinterfaces的方法
+        // 遍历顺序很重要，必须先添加superclass的方法，然后是superclass chain的方法，然后是interface的方法，再然后是super interfaces的方法
         // 创建三个集合来保存不同类型的方法
         List actualMethods = new ArrayList();
         List interfaceMethods = new ArrayList();

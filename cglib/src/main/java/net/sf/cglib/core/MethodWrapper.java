@@ -38,7 +38,12 @@ public class MethodWrapper {
 
     public static Set createSet(Collection methods) {
         Set set = new HashSet();
+        // 遍历传入的方法集合
         for (Iterator it = methods.iterator(); it.hasNext();) {
+            // 将每个方法包装为MethodWrapperKey存入到set中
+            // MethodWrapperKey是通过KeyFactory动态代理出的来的MethodWrapperKey对象作为Factory，调用
+            // newInstance方法创建出来的MethodWrapperKey对象，
+            // 里面持有了方法的名称，参数的类型名称以及返回值的类型名称
             set.add(create((Method)it.next()));
         }
         return set;
