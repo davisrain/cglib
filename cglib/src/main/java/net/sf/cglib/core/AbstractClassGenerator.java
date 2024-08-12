@@ -35,6 +35,7 @@ import java.util.WeakHashMap;
 abstract public class AbstractClassGenerator<T>
 implements ClassGenerator
 {
+    // 存储的是当前正在进行创建的AbstractClassGenerator对象
     private static final ThreadLocal CURRENT = new ThreadLocal();
 
     private static volatile Map<ClassLoader, ClassLoaderData> CACHE = new WeakHashMap<ClassLoader, ClassLoaderData>();
@@ -58,7 +59,9 @@ implements ClassGenerator
     private Object key;
     // 默认是使用缓存的，即会使用ClassLoaderData里面与key属性匹配的缓存
     private boolean useCache = DEFAULT_USE_CACHE;
+    // 要生成的类的全限定名
     private String className;
+    // 表示在实际创建之前是否需要先根据className尝试去加载类
     private boolean attemptLoad;
 
     protected static class ClassLoaderData {
@@ -73,7 +76,7 @@ implements ClassGenerator
          * <p>Note: the only way to access a class is to find it through generatedClasses cache, thus
          * the key should not expire as long as the class itself is alive (its classloader is alive).</p>
          */
-        // 注意：访问一个class的唯一方式是去通过generatedClasses缓存查找，因此如果class自身是存活状态的话，缓存对应的key就不会过期
+        // 注意：访问一个class的唯一方式是去通过generatedClasses缓存查找，因此如果class自身是存活状态的话，缓存CACHE对应的key(classLoader)就不会过期
         private final LoadingCache<AbstractClassGenerator, Object, Object> generatedClasses;
 
         /**
