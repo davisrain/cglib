@@ -81,7 +81,8 @@ implements CallbackGenerator
     }
 
     public void generate(ClassEmitter ce, Context context, List methods) {
-        // 创建一个map，key为方法签名的string格式，value为methodProxyField
+        // 创建一个map，key为方法签名的toString()方法的返回，value为methodProxyField字段的名称
+        // 该map用于CGLIB$findMethodProxy方法根据signature获取到对应方法的MethodProxy对象
         Map sigMap = new HashMap();
         // 遍历传入的需要由该callbackGenerator生成的方法集合
         for (Iterator it = methods.iterator(); it.hasNext();) {
@@ -165,9 +166,28 @@ implements CallbackGenerator
             e.return_value();
             // 结束方法，计算方法的max_locals max_stacks
             e.end_method();
+
+            /*
+             每次循环会为每个方法生成以下内容：
+                private static final Method CGLIB${methodName}${index}$Method;
+                private static final MethodProxy CGLIB${methodName}${index}$Proxy;
+
+                final {returnType} CGLIB${methodName}${index}({args}) {
+                    return super.{methodName}();
+                }
+
+                public/protected/ final {returnType} {methodName}({args}) {
+                    if (this.CGLIB$CALLBACK_{i} != null) {
+                        return ({returnType}) this.CGLIB$CALLBACK_{i}.intercept(this, CGLIB${methodName}${index}$Method, new Object[{args], CGLIB${methodName}${index}$Proxy);
+                    }
+                    return super.{methodName}();
+                }
+             */
+
         }
-        // 生成findProxy方法
+        // 生成public static MethodProxy CGLIB$findMethodProxy(Signature s)方法，根据方法签名，获取到对应的MethodProxy类型的CGLIB${methodName}${index}$Proxy静态属性
         generateFindProxy(ce, sigMap);
+
     }
 
     private static void superHelper(CodeEmitter e, MethodInfo method, Context context)
@@ -249,14 +269,16 @@ implements CallbackGenerator
                 // 使用aastore将方法描述符存入对应数组下标中
                 e.aastore();
             }
+            // 此时栈顶的数组就是String[] {methodName1, methodDescriptor1, methodName2, methodDescriptor2 ...}
 
-            // 加载classInfo对应的类型，即调用Class.forName方法
+            // 加载classInfo对应的类型
+            // 即调用Class.forName方法，加载出对应方法的声明类
             EmitUtils.load_class(e, classInfo.getType());
-            // 复制栈顶元素
+            // 复制栈顶元素，即复制方法声明类
             e.dup();
             // 将其存入到declaringclass这个局部遍历slot中
             e.store_local(declaringclass);
-            // 调用Class的getDeclaredMethods方法
+            // 调用Class的getDeclaredMethods方法，此时栈顶元素就是类中声明的所有方法数组
             e.invoke_virtual(Constants.TYPE_CLASS, GET_DECLARED_METHODS);
             // 然后再调用ReflectUtils的findMethods方法，其中参数为之前声明的String数组和declaringClass的declaredMethods数组
             // 到这一步就根据方法名和描述符找到了对应的方法的反射对应Method数组
@@ -287,6 +309,7 @@ implements CallbackGenerator
                 e.push(sig.getName());
                 e.push(impl.getName());
                 // 调用添加invokestatic，调用MethodProxy的create方法创建MethodProxy对象
+                // public static MethodProxy create(/*declaringClass*/ Class c1, /*thisClass*/ Class c2, /*descriptor*/ String desc, /*originalName*/ String name1, /*implName*/ String name2)
                 e.invoke_static(METHOD_PROXY, MAKE_PROXY);
                 // 然后添加putstatic字节码，将MethodProxy对象放入到private static final MethodProxy CGLIB$ + {methodName} + $ + {index} + $Proxy字段中
                 e.putfield(getMethodProxyField(impl));

@@ -129,9 +129,9 @@ class FastClassEmitter extends ClassEmitter {
                 return ReflectUtils.getSignature((Method)obj).toString();
             }
         });
-        // 加载方法第一个参数到操作数栈
+        // 加载方法第一个参数到操作数栈，也就是Signature
         e.load_arg(0);
-        // 调用方法签名的toString方法
+        // 调用方法签名的toString方法，得到Signature的String
         e.invoke_virtual(Constants.TYPE_OBJECT, TO_STRING);
         // 根据方法签名集合进行switch选择，找到传入的方法签名在方法集合中的index并返回
         signatureSwitchHelper(e, signatures);

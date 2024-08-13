@@ -650,13 +650,18 @@ public class Enhancer extends AbstractClassGenerator
         // its superinterfaces.
         // 遍历顺序很重要，必须先添加superclass的方法，然后是superclass chain的方法，然后是interface的方法，再然后是super interfaces的方法
         // 创建三个集合来保存不同类型的方法
+
+        // <Method>
         List actualMethods = new ArrayList();
+        // <Method>
         List interfaceMethods = new ArrayList();
+        // <MethodWrapperKey>
         final Set forcePublic = new HashSet();
         // 从sc和interfaces中获取方法
         getMethods(sc, interfaces, actualMethods, interfaceMethods, forcePublic);
 
-        // 遍历actualMethods集合，进行转换
+        // 遍历actualMethods集合，进行转换.
+        // <MethodInfo>
         List methods = CollectionUtils.transform(actualMethods, new Transformer() {
             public Object transform(Object value) {
                 Method method = (Method)value;
@@ -685,6 +690,7 @@ public class Enhancer extends AbstractClassGenerator
                       Constants.ACC_PUBLIC,
                       getClassName(),
                       Type.getType(sc),
+                      // 根据useFactory来决定是否要添加Factory接口，默认是添加的
                       (useFactory ?
                        TypeUtils.add(TypeUtils.getTypes(interfaces), FACTORY) :
                        TypeUtils.getTypes(interfaces)),
@@ -701,6 +707,7 @@ public class Enhancer extends AbstractClassGenerator
                     Constants.SOURCE_FILE);
         }
         // 将构造器集合也转换为MethodInfo对象的集合
+        // <MethodInfo>
         List constructorInfo = CollectionUtils.transform(constructors, MethodInfoTransformer.getInstance());
 
         // 声明一个private的名为CGLIB$BOUND的boolean类型的属性，并且不存在ConstantValue
@@ -731,6 +738,7 @@ public class Enhancer extends AbstractClassGenerator
         // 遍历callbackTypes数组
         for (int i = 0; i < callbackTypes.length; i++) {
             // 依次声明private的名为CGLIB$CALLBACK_i的callbackType类型的属性
+            // private {CallbackType} CGLIB$CALLBACK_i;
             e.declare_field(Constants.ACC_PRIVATE, getCallbackField(i), callbackTypes[i], null);
         }
         // This is declared private to avoid "public field" pollution
@@ -1337,9 +1345,9 @@ public class Enhancer extends AbstractClassGenerator
         final Map<Class<?>, Set<Signature>> declToBridge = new HashMap();
 
         // 迭代器1为MethodInfo集合的迭代器
-        Iterator it1 = methods.iterator();
+        Iterator<MethodInfo> it1 = methods.iterator();
         // 迭代器2为Method集合的迭代器
-        Iterator it2 = (actualMethods != null) ? actualMethods.iterator() : null;
+        Iterator<Method> it2 = (actualMethods != null) ? actualMethods.iterator() : null;
 
         // 根据迭代器1进行迭代
         while (it1.hasNext()) {
@@ -1383,8 +1391,9 @@ public class Enhancer extends AbstractClassGenerator
             }
         }
 
-        // 创建一个桥接方法解析器对declToBridge这个map进行解析，获得类中声明的不是用于扩展父类方法可见性的桥接方法的签名；
-        // 其中key为子类桥接方法的签名，value为父类被桥接方法的签名。
+        // 创建一个桥接方法解析器对declToBridge这个map进行解析，获得那些在已知的桥接方法中通过invokespecial和invokeinterface进行调用的那些方法的签名。
+        // 会将和桥接方法签名相等的那些签名排除掉，这种情况只会发生在用于扩展方法的可见性的时候。
+        // 其中key为桥接方法的签名，value为被桥接方法通过invokespecial或invokeinterface调用的方法的签名
         final Map<Signature, Signature> bridgeToTarget = new BridgeMethodResolver(declToBridge, getClassLoader()).resolveAll();
 
         Set<CallbackGenerator> seenGen = new HashSet();

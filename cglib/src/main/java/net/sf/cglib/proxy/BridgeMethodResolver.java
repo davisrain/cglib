@@ -140,4 +140,39 @@ class BridgeMethodResolver {
         }
     }
 
+     static class Foo<T> {
+
+        public CharSequence charSequence() {
+            return "()Ljava/lang/CharSequence;";
+        }
+
+        public void typeVariable(T t) {
+            System.out.println("typeVariable parameter T");
+        }
+
+
+    }
+
+     static class Bar extends Foo<String> {
+
+        // 协变返回类型，会生成桥接方法
+        @Override
+        public String charSequence() {
+            return "()Ljava/lang/String;";
+        }
+
+        // 泛型擦除，会生成桥接方法
+        @Override
+        public void typeVariable(String s) {
+            System.out.println("typeVariable parameter String");
+        }
+
+     }
+
+    public static class PublicBar extends Bar {
+
+        // 因为PublicBar是public的，而Bar是非public的，那么要访问到Bar里面的public方法，
+        // 也需要在PublicBar里面生成两个桥接方法，用于扩展方法的可见性，桥接方法的逻辑就是单纯的invokespecial调用父类方法
+    }
+
 }

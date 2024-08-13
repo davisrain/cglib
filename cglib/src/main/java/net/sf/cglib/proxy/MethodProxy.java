@@ -33,11 +33,16 @@ import net.sf.cglib.reflect.FastClass;
  * @version $Id: MethodProxy.java,v 1.16 2009/01/11 20:09:48 herbyderby Exp $
  */
 public class MethodProxy {
+    // originalMethod的方法签名
     private Signature sig1;
+    // implMethod的方法签名，区别在于方法名是CGLIB${methodName}${index}
     private Signature sig2;
+    // 根据原始方法的声明类declaringClass 以及 代理类thisClass创建出的CreateInfo。
+    // 里面会持有当前正在创建的Enhancer的namePolicy generatorStrategy attemptLoad属性
     private CreateInfo createInfo;
     
     private final Object initLock = new Object();
+    // 懒加载，当第一次调用invoke相关方法的时候，才会通过init方法进行初始化
     private volatile FastClassInfo fastClassInfo;
     
     /**
@@ -108,7 +113,9 @@ public class MethodProxy {
 
     private static class CreateInfo
     {
+        // declaringClass
         Class c1;
+        // thisClass
         Class c2;
         NamingPolicy namingPolicy;
         GeneratorStrategy strategy;
@@ -134,9 +141,9 @@ public class MethodProxy {
     private static FastClass helper(CreateInfo ci, Class type) {
         // 创建一个FastClass中的Generator，该Generator也继承于AbstractClassGenerator
         FastClass.Generator g = new FastClass.Generator();
-        // 将type设置进去
+        // 将type设置进去,type可能是declaringClass 也可能是 thisClass
         g.setType(type);
-        // 将CreateInfo中的c2的类加载器设置进generator
+        // 将CreateInfo中的thisClass的类加载器设置进generator
         g.setClassLoader(ci.c2.getClassLoader());
         // 将namingPolicy和generatorStrategy以及attemptLoad都设置进去
         g.setNamingPolicy(ci.namingPolicy);
@@ -214,8 +221,10 @@ public class MethodProxy {
 
     /**
      * Invoke the original method, on a different object of the same type.
+     *  调用原始方法，通过相同类型下的不同对象
      * @param obj the compatible object; recursion will result if you use the object passed as the first
      * argument to the MethodInterceptor (usually not what you want)
+     *  兼容的对象。如果使用MethodInterceptor的第一个参数的话，可能会导致一直在递归调用
      * @param args the arguments passed to the intercepted method; you may substitute a different
      * argument array as long as the types are compatible
      * @see MethodInterceptor#intercept
@@ -242,8 +251,10 @@ public class MethodProxy {
 
     /**
      * Invoke the original (super) method on the specified object.
+     *  调用指定对象的原始方法，即父类方法
      * @param obj the enhanced object, must be the object passed as the first
      * argument to the MethodInterceptor
+     *  被代理的对象，必须是MethodInterceptor的第一个参数
      * @param args the arguments passed to the intercepted method; you may substitute a different
      * argument array as long as the types are compatible
      * @see MethodInterceptor#intercept

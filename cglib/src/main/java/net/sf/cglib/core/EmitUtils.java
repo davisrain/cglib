@@ -183,12 +183,15 @@ public class EmitUtils {
     public static void string_switch(CodeEmitter e, String[] strings, int switchStyle, ObjectSwitchCallback callback) {
         try {
             switch (switchStyle) {
+                // 根据前缀树的方式来进行switch，先根据string的长度来定位label，
             case Constants.SWITCH_STYLE_TRIE:
                 string_switch_trie(e, strings, callback);
                 break;
+                // 先使用string的hashcode来定位label，然后在具体的label中再根据equals来选择具体要执行的代码分支
             case Constants.SWITCH_STYLE_HASH:
                 string_switch_hash(e, strings, callback, false);
                 break;
+                // 只根据string的hashcode来判断，不使用equals方法比较
             case Constants.SWITCH_STYLE_HASHONLY:
                 string_switch_hash(e, strings, callback, true);
                 break;
@@ -209,12 +212,18 @@ public class EmitUtils {
                                            final ObjectSwitchCallback callback) throws Exception {
         final Label def = e.make_label();
         final Label end = e.make_label();
+        // 将方法签名的string数组转换为map，
+        // key为signature字符串的长度，
+        // value为长度等于key的这些signature数组
+        // Map<Integer, List<String>>
         final Map buckets = CollectionUtils.bucket(Arrays.asList(strings), new Transformer() {
             public Object transform(Object value) {
                 return new Integer(((String)value).length());
             }
         });
+        // 复制栈顶元素，即需要进行switch的方法签名signature字符串
         e.dup();
+        // 调用string的length()方法获取到signature的长度
         e.invoke_virtual(Constants.TYPE_STRING, STRING_LENGTH);
         e.process_switch(getSwitchKeys(buckets), new ProcessSwitchCallback() {
                 public void processCase(int key, Label ignore_end) throws Exception {
