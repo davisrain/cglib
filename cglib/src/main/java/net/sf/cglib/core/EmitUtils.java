@@ -213,17 +213,17 @@ public class EmitUtils {
         final Label def = e.make_label();
         final Label end = e.make_label();
         // 将方法签名的string数组转换为map，
-        // key为signature字符串的长度，
-        // value为长度等于key的这些signature数组
+        // key为字符串的长度，
+        // value为长度等于key的这些string数组
         // Map<Integer, List<String>>
         final Map buckets = CollectionUtils.bucket(Arrays.asList(strings), new Transformer() {
             public Object transform(Object value) {
                 return new Integer(((String)value).length());
             }
         });
-        // 复制栈顶元素，即需要进行switch的方法签名signature字符串
+        // 复制栈顶元素，即需要进行switch的字符串
         e.dup();
-        // 调用string的length()方法获取到signature的长度
+        // 调用string的length()方法获取到字符串的长度
         e.invoke_virtual(Constants.TYPE_STRING, STRING_LENGTH);
         e.process_switch(getSwitchKeys(buckets), new ProcessSwitchCallback() {
                 public void processCase(int key, Label ignore_end) throws Exception {
@@ -247,21 +247,31 @@ public class EmitUtils {
                                            final Label end,
                                            final int index) throws Exception {
         final int len = ((String)strings.get(0)).length();
+        // 将strings数组转换为map
+        // key为string对应index的字符
+        // value为index对应字符相等那些string集合
         final Map buckets = CollectionUtils.bucket(strings, new Transformer() {
             public Object transform(Object value) {
                 return new Integer(((String)value).charAt(index));
             }
         });
+        // 复制栈顶要switch的字符串
         e.dup();
+        // 将index压入栈顶
         e.push(index);
+        // 调用string的charAt方法，获取要switch的字符串index位置的字符
         e.invoke_virtual(Constants.TYPE_STRING, STRING_CHAR_AT);
         e.process_switch(getSwitchKeys(buckets), new ProcessSwitchCallback() {
                 public void processCase(int key, Label ignore_end) throws Exception {
                     List bucket = (List)buckets.get(new Integer(key));
+                    // 如果index + 1 等于了 要switch的字符串的长度
                     if (index + 1 == len) {
+                        // 将栈顶的需要switch的字符串弹出
                         e.pop();
+                        // 获取到对应的字符串，调用ObjectSwitchCallback的processCase进行匹配之后的处理逻辑
                         callback.processCase(bucket.get(0), end);
                     } else {
+                        // 否则，递归调用stringSwitchHelper，并且将index + 1，匹配下一个字符
                         stringSwitchHelper(e, bucket, callback, def, end, index + 1);
                     }
                 }
@@ -808,6 +818,7 @@ public class EmitUtils {
 
     private static void member_switch_helper(final CodeEmitter e,
                                              List members,
+                                             // 目前只会传入 GetIndexCallback，就是根据MethodInfo获取对应index
                                              final ObjectSwitchCallback callback,
                                              boolean useName) {
         try {
@@ -823,27 +834,38 @@ public class EmitUtils {
                 };
             final Label def = e.make_label();
             final Label end = e.make_label();
+            // 如果useName参数为true，通过method_switch调用的时候，该参数为true
             if (useName) {
+                // 将栈顶的两个元素交换位置，也就是将方法名和参数类型数组交换。
+                // 那么现在栈顶的就是方法名了
                 e.swap();
+                // 将MethodInfo的集合根据方法名进行分组
                 final Map buckets = CollectionUtils.bucket(members, new Transformer() {
                         public Object transform(Object value) {
                             return ((MethodInfo)value).getSignature().getName();
                         }
                     });
+                // 然后将MethodInfo里面出现过的方法名转换为数组
                 String[] names = (String[])buckets.keySet().toArray(new String[buckets.size()]);
+                // 然后根据方法名进行switch匹配
                 EmitUtils.string_switch(e, names, Constants.SWITCH_STYLE_HASH, new ObjectSwitchCallback() {
                         public void processCase(Object key, Label dontUseEnd) throws Exception {
+                            // 匹配成功之后，获取到buckets中对应的名称相等的那些方法的MethodInfo集合，
+                            // 再进行第二个步骤的匹配，即根据参数个数进行匹配
                             member_helper_size(e, (List)buckets.get(key), callback, cached, def, end);
                         }
                         public void processDefault() throws Exception {
+                            // 如果没有匹配成功，直接跳转到def标签
                             e.goTo(def);
                         }
                     });
             } else {
+                // 如果不使用方法名来匹配的话，直接先按参数个数进行匹配
                 member_helper_size(e, members, callback, cached, def, end);
             }
             e.mark(def);
             e.pop();
+            // 执行默认的逻辑
             callback.processDefault();
             e.mark(end);
         } catch (RuntimeException ex) {
@@ -861,16 +883,22 @@ public class EmitUtils {
                                            final ParameterTyper typer,
                                            final Label def,
                                            final Label end) throws Exception {
+        // 将members根据参数个数进行分组
         final Map buckets = CollectionUtils.bucket(members, new Transformer() {
             public Object transform(Object value) {
                 return new Integer(typer.getParameterTypes((MethodInfo)value).length);
             }
         });
+        // 复制栈顶的参数类型数组
         e.dup();
+        // 获取参数类型数组的长度
         e.arraylength();
+        // 然后根据参数个数进行switch匹配
         e.process_switch(EmitUtils.getSwitchKeys(buckets), new ProcessSwitchCallback() {
             public void processCase(int key, Label dontUseEnd) throws Exception {
+                // 匹配成功之后，获取到那些参数个数匹配的MethodInfo的集合
                 List bucket = (List)buckets.get(new Integer(key));
+                // 再进行下一个步骤的匹配，根据参数类型进行匹配
                 member_helper_type(e, bucket, callback, typer, def, end, new BitSet());
             }
             public void processDefault() throws Exception {
@@ -886,21 +914,32 @@ public class EmitUtils {
                                            final Label def,
                                            final Label end,
                                            final BitSet checked) throws Exception {
+        // 如果待匹配的MethodInfo集合里面只有一个元素了，直接进行参数类型匹配
         if (members.size() == 1) {
             MethodInfo member = (MethodInfo)members.get(0);
+            // 获取到参数类型的Type数组
             Type[] types = typer.getParameterTypes(member);
             // need to check classes that have not already been checked via switches
+            // 遍历进行check
             for (int i = 0; i < types.length; i++) {
                 if (checked == null || !checked.get(i)) {
+                    // 复制栈顶的参数类型数组
                     e.dup();
+                    // 获取对应的位置的参数了悉尼港
                     e.aaload(i);
+                    // 调用getName方法获取其类型的全限定名
                     e.invoke_virtual(Constants.TYPE_CLASS, GET_NAME);
+                    // 获取Type对应的className压入栈顶
                     e.push(TypeUtils.emulateClassGetName(types[i]));
+                    // 然后调用equals方法比较栈顶两个元素是否相等
                     e.invoke_virtual(Constants.TYPE_OBJECT, EQUALS);
+                    // 如果不相等，跳到def标签
                     e.if_jump(e.EQ, def);
                 }
             }
+            // 如果匹配结束都相等
             e.pop();
+            // 调用最外层的ObjectSwitchCallback的processCase来处理
             callback.processCase(member, end);
         } else {
             // choose the index that has the best chance of uniquely identifying member

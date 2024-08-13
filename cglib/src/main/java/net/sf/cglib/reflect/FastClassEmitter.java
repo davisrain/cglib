@@ -140,6 +140,7 @@ class FastClassEmitter extends ClassEmitter {
 
     private static final int TOO_MANY_METHODS = 100; // TODO
     private void emitIndexByClassArray(List methods) {
+        // 声明一个getIndex方法，参数是String类型的方法名 和 Class[]类型的参数数组
         CodeEmitter e = begin_method(Constants.ACC_PUBLIC, METHOD_GET_INDEX, null);
         if (methods.size() > TOO_MANY_METHODS) {
             // hack for big classes
@@ -153,7 +154,9 @@ class FastClassEmitter extends ClassEmitter {
             e.invoke_static(FAST_CLASS, GET_SIGNATURE_WITHOUT_RETURN_TYPE);
             signatureSwitchHelper(e, signatures);
         } else {
+            // 加载getIndex方法的所有参数到栈顶
             e.load_args();
+            // 将Method类型的方法集合转换成MethodInfo类型的集合
             List info = CollectionUtils.transform(methods, MethodInfoTransformer.getInstance());
             EmitUtils.method_switch(e, info, new GetIndexCallback(e, info));
         }
