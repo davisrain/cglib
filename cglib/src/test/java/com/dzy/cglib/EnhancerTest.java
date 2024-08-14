@@ -11,18 +11,19 @@ public class EnhancerTest {
         System.setProperty("cglib.debugLocation", EnhancerTest.class.getResource("").getPath());
         Enhancer enhancer = new Enhancer();
         enhancer.setSuperclass(Dog.class);
-        enhancer.setInterfaces(new Class[]{CountryInfo.class});
+        enhancer.setInterfaces(new Class[]{CountryInfo.class, ProvinceInfo.class});
         enhancer.setNamingPolicy(new CustomNamingPolicy());
         enhancer.setCallbackFilter(new CustomCallbackFilter());
-        enhancer.setCallbackTypes(new Class[] {CustomMethodInterceptor.class, CountryInfoDispatcher.class, CustomFixedValue.class, NoOp.class});
+        enhancer.setCallbackTypes(new Class[] {CustomMethodInterceptor.class, CountryInfoDispatcher.class, CustomFixedValue.class, NoOp.class, ProvinceInfoLazyLoader.class});
         Class proxyClass = enhancer.createClass();
         Factory proxyFactory = (Factory) proxyClass.newInstance();
-        Dog proxy = (Dog) proxyFactory.newInstance(new Callback[]{new CustomMethodInterceptor(), new CountryInfoDispatcher(), new CustomFixedValue(), NoOp.INSTANCE});
+        Dog proxy = (Dog) proxyFactory.newInstance(new Callback[]{new CustomMethodInterceptor(), new CountryInfoDispatcher(), new CustomFixedValue(), NoOp.INSTANCE, new ProvinceInfoLazyLoader()});
         proxy.eat();
         proxy.sleep();
         System.out.println(((CountryInfo) proxy).getCountry());
         System.out.println(proxy.getFixedValue());
         System.out.println(proxy.doNothing());
+        System.out.println(((ProvinceInfo) proxy).getProvince());
     }
 
     static class CustomNamingPolicy extends DefaultNamingPolicy {
@@ -43,6 +44,8 @@ public class EnhancerTest {
                 return 2;
             else if (methodName.equals("doNothing"))
                 return 3;
+            else if (methodName.equals("getProvince"))
+                return 4;
             return 0;
         }
     }
@@ -62,7 +65,15 @@ public class EnhancerTest {
 
         @Override
         public Object loadObject() throws Exception {
-            return new ChineseDog();
+            return new Chinese();
+        }
+    }
+
+    static class ProvinceInfoLazyLoader implements LazyLoader {
+
+        @Override
+        public Object loadObject() throws Exception {
+            return new SiChuan();
         }
     }
 
@@ -98,10 +109,21 @@ public class EnhancerTest {
         String getCountry();
     }
 
-    static class ChineseDog extends Dog implements CountryInfo {
+    interface ProvinceInfo {
+        String getProvince();
+    }
+
+    static class Chinese implements CountryInfo {
         @Override
         public String getCountry() {
             return "China";
+        }
+    }
+
+    static class SiChuan implements ProvinceInfo {
+        @Override
+        public String getProvince() {
+            return "sichuan";
         }
     }
 }
