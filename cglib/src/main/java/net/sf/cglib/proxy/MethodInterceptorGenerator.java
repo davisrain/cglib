@@ -171,16 +171,17 @@ implements CallbackGenerator
              每次循环会为每个方法生成以下内容：
                 private static final Method CGLIB${methodName}${index}$Method;
                 private static final MethodProxy CGLIB${methodName}${index}$Proxy;
+                private static final Object[] CGLIB$emptyArgs;
 
                 final {returnType} CGLIB${methodName}${index}({args}) {
-                    return super.{methodName}();
+                    return super.{methodName}({args});
                 }
 
                 public/protected/ final {returnType} {methodName}({args}) {
                     if (this.CGLIB$CALLBACK_{i} != null) {
-                        return ({returnType}) this.CGLIB$CALLBACK_{i}.intercept(this, CGLIB${methodName}${index}$Method, new Object[{args], CGLIB${methodName}${index}$Proxy);
+                        return ({returnType}) this.CGLIB$CALLBACK_{i}.intercept(this, CGLIB${methodName}${index}$Method, new Object[{args}], CGLIB${methodName}${index}$Proxy);
                     }
-                    return super.{methodName}();
+                    return super.{methodName}({args});
                 }
              */
 

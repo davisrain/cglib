@@ -774,10 +774,15 @@ public class CodeEmitter extends LocalVariablesSorter {
     }
 
     public void throw_exception(Type type, String msg) {
+        // new 一个Type类型的异常对象
         new_instance(type);
+        // 复制栈顶元素
         dup();
+        // 将异常msg压入栈顶
         push(msg);
+        // 调用异常的有参构造函数
         invoke_constructor(type, CSTRUCT_STRING);
+        // athrow 抛出栈顶的异常
         athrow();
     }
 
@@ -789,22 +794,30 @@ public class CodeEmitter extends LocalVariablesSorter {
      * @param type the class indicating the current type of the top stack value
      */
     public void box(Type type) {
+        // 如果type是初始类型，才进行操作
         if (TypeUtils.isPrimitive(type)) {
+            // 如果是void，将null压入栈顶
             if (type == Type.VOID_TYPE) {
                 aconst_null();
             } else {
+                // 其他情况获取到初始类型的包装类型Type
                 Type boxed = TypeUtils.getBoxedType(type);
+                // new出对应的包装类型的对象
                 new_instance(boxed);
+                // 如果type是long或者double
                 if (type.getSize() == 2) {
                     // Pp -> Ppo -> oPpo -> ooPpo -> ooPp -> o
                     dup_x2();
                     dup_x2();
                     pop();
-                } else {
+                }
+                // 如果是其他初始类型
+                else {
                     // p -> po -> opo -> oop -> o
                     dup_x1();
                     swap();
                 }
+                // 然后调用包装类型的有参构造函数
                 invoke_constructor(boxed, new Signature(Constants.CONSTRUCTOR_NAME, Type.VOID_TYPE, new Type[]{ type }));
             }
         }

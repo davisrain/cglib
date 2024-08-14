@@ -95,17 +95,25 @@ class FastClassEmitter extends ClassEmitter {
         e.end_method();
 
         // invoke(int, Object, Object[])
+        // 声明一个public Object invoke(int, Object, Object[]) throws InvocationTargetException 方法
         e = begin_method(Constants.ACC_PUBLIC, INVOKE, INVOCATION_TARGET_EXCEPTION_ARRAY);
+        // 加载方法的第二个参数到栈顶
         e.load_arg(1);
+        // 将对象强转为base类型
         e.checkcast(base);
+        // 加载方法的第一个参数，即methodIndex
         e.load_arg(0);
         invokeSwitchHelper(e, methods, 2, base);
         e.end_method();
 
         // newInstance(int, Object[])
+        // 声明一个public Object newInstance(int, Object[]) throws InvocationTargetException 方法
         e = begin_method(Constants.ACC_PUBLIC, NEW_INSTANCE, INVOCATION_TARGET_EXCEPTION_ARRAY);
+        // new一个base对应的对象
         e.new_instance(base);
+        // 复制栈顶元素
         e.dup();
+        // 加载方法的第一个参数
         e.load_arg(0);
         invokeSwitchHelper(e, constructors, 1, base);
         e.end_method();
@@ -142,16 +150,22 @@ class FastClassEmitter extends ClassEmitter {
     private void emitIndexByClassArray(List methods) {
         // 声明一个getIndex方法，参数是String类型的方法名 和 Class[]类型的参数数组
         CodeEmitter e = begin_method(Constants.ACC_PUBLIC, METHOD_GET_INDEX, null);
+        // 如果要选择的方法数量大于了 100，执行特殊的逻辑
         if (methods.size() > TOO_MANY_METHODS) {
             // hack for big classes
+            // 将方法转换为Signature的字符串，然后只取包含方法名和参数描述符的部分，去掉返回类型的描述符
             List signatures = CollectionUtils.transform(methods, new Transformer() {
                 public Object transform(Object obj) {
                     String s = ReflectUtils.getSignature((Method)obj).toString();
                     return s.substring(0, s.lastIndexOf(')') + 1);
                 }
             });
+            // 加载出方法的参数
             e.load_args();
+            // 然后调用FastClass的getSignatureWithoutReturnType方法，将方法名和参数类型转换成signature的形式
+            // 并且将结果压入栈顶
             e.invoke_static(FAST_CLASS, GET_SIGNATURE_WITHOUT_RETURN_TYPE);
+            // 然后采用string类型的switch，选择出 方法名和参数描述符相等的 signature
             signatureSwitchHelper(e, signatures);
         } else {
             // 加载getIndex方法的所有参数到栈顶
@@ -186,24 +200,36 @@ class FastClassEmitter extends ClassEmitter {
     }
 
     private static void invokeSwitchHelper(final CodeEmitter e, List members, final int arg, final Type base) {
-        final List info = CollectionUtils.transform(members, MethodInfoTransformer.getInstance());        
+        // 将Method类型的集合转换为MethodInfo类型的集合
+        final List info = CollectionUtils.transform(members, MethodInfoTransformer.getInstance());
+        // 创建一个illegalArg的label，用于参数验证失败后跳转
         final Label illegalArg = e.make_label();
+        // 创建一个block，即包含start和end两个label
         Block block = e.begin_block();
+        // 根据MethodInfo集合的数量转换为一个range数组，数组中的每个元素都作为switch的label
         e.process_switch(getIntRange(info.size()), new ProcessSwitchCallback() {
             public void processCase(int key, Label end) {
+                // 命中对应的label之后
+                // 获取到对应index的MethodInfo
                 MethodInfo method = (MethodInfo)info.get(key);
+                // 获取方法的参数类型的Type数组
                 Type[] types = method.getSignature().getArgumentTypes();
+                // 根据参数类型Type数组进行遍历
                 for (int i = 0; i < types.length; i++) {
+                    // 从方法传入的参数数组中加载对应位置的参数到栈顶，进行拆箱操作
                     e.load_arg(arg);
                     e.aaload(i);
                     e.unbox(types[i]);
                 }
                 // TODO: change method lookup process so MethodInfo will already reference base
                 // instead of superclass when superclass method is inaccessible
+                // 调用对应的方法，通过invokevirtual字节码进行调用
                 e.invoke(method, base);
+                // 如果方法不是构造函数，那么需要对返回类型进行装箱
                 if (!TypeUtils.isConstructor(method)) {
                     e.box(method.getSignature().getReturnType());
                 }
+                // 执行return操作将栈顶数据返回
                 e.return_value();
             }
             public void processDefault() {
@@ -211,8 +237,10 @@ class FastClassEmitter extends ClassEmitter {
             }
         });
         block.end();
+        // 如果出现了异常，包装为InvocationTargetException抛出
         EmitUtils.wrap_throwable(block, INVOCATION_TARGET_EXCEPTION);
         e.mark(illegalArg);
+        // 如果没有匹配到对应的switch的label，抛出异常
         e.throw_exception(ILLEGAL_ARGUMENT_EXCEPTION, "Cannot find matching method/constructor");
     }
 

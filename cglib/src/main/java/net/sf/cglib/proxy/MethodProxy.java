@@ -236,7 +236,11 @@ public class MethodProxy {
             init();
             // 获取到fastClassInfo
             FastClassInfo fci = fastClassInfo;
-            // 反射调用declaringClass中声明的方法的反射对象，如果obj是代理对象并且重写了该方法的话，那么会动态分派到代理对象上。
+            // 根据fastClassInfo里面的index1，获取到fastClass1里面index1对应的方法来执行。
+            // FastClass的invoke方法的逻辑就是根据index进行switch，找到对应的逻辑分支，然后内层逻辑就是通过index获取到对应方法的方法签名，
+            // 然后生成invokevirtual字节码去调用对应方法
+
+            // 如果obj是代理对象并且重写了该方法的话，那么会动态分派到代理对象上。
             // 如果不是代理对象，那么会调用被代理对象的方法。即是根据obj这个对象的实际类型来进行动态分派的。
             // 因此invoke方法即可以传入proxy代理对象，也可以传入target被代理对象，因此这两个对象中都有对应签名的方法，会根据实际传入的对象动态分派。
             return fci.f1.invoke(fci.i1, obj, args);

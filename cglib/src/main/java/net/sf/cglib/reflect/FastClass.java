@@ -81,6 +81,7 @@ abstract public class FastClass
         }
 
         protected Object firstInstance(Class type) {
+            // 获取代理出来的FastClass类的有参构造函数，将type作为参数传入，实例化出代理后的FastClass类
             return ReflectUtils.newInstance(type,
                                             new Class[]{ Class.class },
                                             new Object[]{ this.type });

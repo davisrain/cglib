@@ -183,7 +183,7 @@ public class EmitUtils {
     public static void string_switch(CodeEmitter e, String[] strings, int switchStyle, ObjectSwitchCallback callback) {
         try {
             switch (switchStyle) {
-                // 根据前缀树的方式来进行switch，先根据string的长度来定位label，
+                // 根据前缀树的方式来进行switch，先根据string的长度来定位label，然后再依次根据每一个字符来进行switch
             case Constants.SWITCH_STYLE_TRIE:
                 string_switch_trie(e, strings, callback);
                 break;
@@ -922,10 +922,11 @@ public class EmitUtils {
             // need to check classes that have not already been checked via switches
             // 遍历进行check
             for (int i = 0; i < types.length; i++) {
+                // 如果checked位图为null 或者 对应下标的参数类型已经还没有在前置方法里面检查过，那么进行参数类型的检查
                 if (checked == null || !checked.get(i)) {
                     // 复制栈顶的参数类型数组
                     e.dup();
-                    // 获取对应的位置的参数了悉尼港
+                    // 获取对应的位置的参数类型
                     e.aaload(i);
                     // 调用getName方法获取其类型的全限定名
                     e.invoke_virtual(Constants.TYPE_CLASS, GET_NAME);
@@ -943,36 +944,50 @@ public class EmitUtils {
             callback.processCase(member, end);
         } else {
             // choose the index that has the best chance of uniquely identifying member
+            // 获取第一个MethodInfo的参数类型的Type数组
+            // 选出参数类型差异最大的那个index
             Type[] example = typer.getParameterTypes((MethodInfo)members.get(0));
             Map buckets = null;
             int index = -1;
+            // 遍历参数类型的Type数组
             for (int i = 0; i < example.length; i++) {
                 final int j = i;
+                // 将MethodInfo集合进行分组
+                // key为对应j下标的参数类型的全限定名
+                // value为j下标是该参数类型的MethodInfo的集合
                 Map test = CollectionUtils.bucket(members, new Transformer() {
                     public Object transform(Object value) {
                         return TypeUtils.emulateClassGetName(typer.getParameterTypes((MethodInfo)value)[j]);
                     }
                 });
+                // 如果buckets为null  或者 按某一位置的参数类型分组出来的数量 大于 现有的buckets的分组数量
+                // 将buckets替换为分组数量更多的map，并且记录参数类型的下标index
                 if (buckets == null || test.size() > buckets.size()) {
                     buckets = test;
                     index = i;
                 }
             }
+            // 如果buckets为null或者分组数量为1，那么说明至少存在两个方法 方法名 方法参数都相等，直接跳转到def标签
             if (buckets == null || buckets.size() == 1) {
                 // TODO: switch by returnType
                 // must have two methods with same name, types, and different return types
                 e.goTo(def);
             } else {
+                // 否则，将index设置到已检查过的位图中
                 checked.set(index);
 
+                // 获取对应index的参数类型
                 e.dup();
                 e.aaload(index);
+                // 调用Class.getName()获取到参数类型的全限定名
                 e.invoke_virtual(Constants.TYPE_CLASS, GET_NAME);
 
                 final Map fbuckets = buckets;
                 String[] names = (String[])buckets.keySet().toArray(new String[buckets.size()]);
+                // 对参数类型的全限定名进行string类型的switch
                 EmitUtils.string_switch(e, names, Constants.SWITCH_STYLE_HASH, new ObjectSwitchCallback() {
                     public void processCase(Object key, Label dontUseEnd) throws Exception {
+                        // 再次递归进行参数类型的switch操作，直到methodInfo集合的元素为1个时候结束
                         member_helper_type(e, (List)fbuckets.get(key), callback, typer, def, end, checked);
                     }
                     public void processDefault() throws Exception {
@@ -985,11 +1000,17 @@ public class EmitUtils {
 
     public static void wrap_throwable(Block block, Type wrapper) {
         CodeEmitter e = block.getCodeEmitter();
+        // 添加try catch代码块捕获Throwable
         e.catch_exception(block, Constants.TYPE_THROWABLE);
+        // new一个Type类型的对象
         e.new_instance(wrapper);
+        // 此时栈顶的元素是 Throwable wrapper，执行完dup_x1之后是wrapper Throwable wrapper
         e.dup_x1();
+        // 然后交换栈顶的两个元素，变成wrapper wrapper Throwable
         e.swap();
+        // 调用wrapper的参数为Throwable的有参构造方法
         e.invoke_constructor(wrapper, CSTRUCT_THROWABLE);
+        // 然后通过athrow字节码将栈顶的包装异常抛出
         e.athrow();
     }
 

@@ -44,7 +44,8 @@ class DispatcherGenerator implements CallbackGenerator {
         // 遍历MethodInfo集合
         for (Iterator it = methods.iterator(); it.hasNext();) {
             MethodInfo method = (MethodInfo)it.next();
-            // 如果method不是被protected修饰的
+            // 如果method不是被protected修饰的，才执行以下逻辑，
+            // 换言之，Dispatcher这种类型的Callback只适用于非protected方法
             if (!TypeUtils.isProtected(method.getModifiers())) {
                 // 根据MethodInfo在类中声明一个方法
                 CodeEmitter e = context.beginMethod(ce, method);
@@ -74,6 +75,9 @@ class DispatcherGenerator implements CallbackGenerator {
                 e.end_method();
             }
         }
+        /*
+
+         */
     }
 
     public void generateStatic(CodeEmitter e, Context context, List methods) { }
