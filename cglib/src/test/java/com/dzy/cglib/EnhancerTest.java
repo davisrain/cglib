@@ -18,6 +18,7 @@ public class EnhancerTest {
         Class proxyClass = enhancer.createClass();
         Factory proxyFactory = (Factory) proxyClass.newInstance();
         Dog proxy = (Dog) proxyFactory.newInstance(new Callback[]{new CustomMethodInterceptor(), new CountryInfoDispatcher(), new CustomFixedValue(), NoOp.INSTANCE, new ProvinceInfoLazyLoader()});
+        System.out.println(proxy.toString());
         proxy.eat();
         proxy.sleep();
         System.out.println(((CountryInfo) proxy).getCountry());

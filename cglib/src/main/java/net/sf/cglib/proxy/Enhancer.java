@@ -1067,7 +1067,7 @@ public class Enhancer extends AbstractClassGenerator
         // 遍历持有的构造方法对应的MethodInfo的集合
         for (Iterator it = constructors.iterator(); it.hasNext();) {
             MethodInfo constructor = (MethodInfo)it.next();
-            // 如果currentData不为null 并且 当前构造方法的描述符是()V，直接跳过，进行下一次循环
+            // 如果currentData不为null 并且 当前构造方法的描述符不是()V，直接跳过，进行下一次循环
             if (currentData != null && !"()V".equals(constructor.getSignature().getDescriptor())) {
                 continue;
             }
@@ -1102,6 +1102,15 @@ public class Enhancer extends AbstractClassGenerator
             // 向code中插入return字节码，表示方法返回
             e.return_value();
             e.end_method();
+
+            /*
+                上面的逻辑就是依次创建和父类构造器签名一直的构造方法
+                public void <init>({args}) {
+                    super.<init>({args});
+                    CGLIB$BIND_CALLBACKS(this);
+
+                }
+             */
         }
         // 如果classOnly为false 并且 没有发现有无参构造器 并且 参数为null，报错
         if (!classOnly && !seenNull && arguments == null)
@@ -1144,6 +1153,21 @@ public class Enhancer extends AbstractClassGenerator
         // 插入return字节码，返回栈顶元素
         e.return_value();
         e.end_method();
+
+        /*
+            public Callback getCallback(int index) {
+                CGLIB$BIND_CALLBACKS(this);
+                switch(index) {
+                    case 0:
+                        return this.CGLIB$CALLBACK_0;
+                    case 1:
+                        return this.CGLIB$CALLBACK_1;
+                        ...
+                    default;
+                        return null;
+                }
+            }
+         */
     }
 
     private void emitSetCallback(ClassEmitter ce, int[] keys) {
@@ -1170,6 +1194,21 @@ public class Enhancer extends AbstractClassGenerator
         // 插入return字节码返回
         e.return_value();
         e.end_method();
+
+        /*
+            public void setCallback(int index, Callback callback) {
+                switch(index) {
+                    case 0:
+                        this.CGLIB$CALLBACK_0 = ({callbackType}) callback;
+                        break;
+                    case 1:
+                        this.CGLIB$CALLBACK_1 = ({callbackType}) callback;
+                        break;
+                }
+
+            }
+
+         */
     }
 
     private void emitSetCallbacks(ClassEmitter ce) {
@@ -1190,9 +1229,18 @@ public class Enhancer extends AbstractClassGenerator
             // 然后将Callback放入到this引用的CGLIB$CALLBACK_i字段中
             e.putfield(getCallbackField(i));
         }
+        // TODO 这里栈顶好像还有两个元素this callbacks
         // 插入return字节码，方法返回
         e.return_value();
         e.end_method();
+
+        /*
+            public void setCallbacks(Callback[] callbacks) {
+                this.CGLIB$CALLBACK_i = ({callbackType}) callbacks[i];
+                ...
+            }
+
+         */
     }
 
     private void emitGetCallbacks(ClassEmitter ce) {
@@ -1222,6 +1270,16 @@ public class Enhancer extends AbstractClassGenerator
         // 然后返回数组
         e.return_value();
         e.end_method();
+
+        /*
+            public Callback[] getCallbacks() {
+                CGLIB$BIND_CALLBACKS(this);
+                Callback[] callbacks = new Callbacks[callbackTypes.length];
+                callbacks[i] = this.CGLIB$CALLBACK_i;
+                ...
+                return callbacks;
+            }
+         */
     }
 
     private void emitNewInstanceCallbacks(ClassEmitter ce) {
@@ -1235,6 +1293,15 @@ public class Enhancer extends AbstractClassGenerator
         e.invoke_static(thisType, SET_THREAD_CALLBACKS);
         // 然后继续在code中添加处理逻辑
         emitCommonNewInstance(e);
+
+        /*
+            public Object newInstance(Callback[] callbacks) {
+                CGLIB$SET_THREAD_CALLBACKS(callbacks);
+                {thisType} instance = new {thisType}();
+                CGLIB$SET_THREAD_CALLBACKS(null);
+                return instance;
+            }
+         */
     }
 
     private Type getThisType(CodeEmitter e) {
@@ -1267,12 +1334,12 @@ public class Enhancer extends AbstractClassGenerator
         CodeEmitter e = ce.begin_method(Constants.ACC_PUBLIC, SINGLE_NEW_INSTANCE, null);
         // 判断callbackTypes数组的长度
         switch (callbackTypes.length) {
-            // 如果等于0，直接跳出switch
         case 0:
+            // 如果等于0，直接跳出switch
             // TODO: make sure Callback is null
             break;
-            // 如果长度等于1，new一个长度为1的Callback数组，将参数传入的Callback放入数组，让后将数组放入CGLIB$THREAD_CALLBACKS这个ThreadLocal中
         case 1:
+            // 如果长度等于1，new一个长度为1的Callback数组，将参数传入的Callback放入数组，让后将数组放入CGLIB$THREAD_CALLBACKS这个ThreadLocal中
             // for now just make a new array; TODO: optimize
             e.push(1);
             e.newarray(CALLBACK);
@@ -1288,6 +1355,22 @@ public class Enhancer extends AbstractClassGenerator
         }
         // 然后向code中生成通用的newInstance的逻辑
         emitCommonNewInstance(e);
+
+        /*
+            public Object newInstance(Callback callback) {
+                // 1.如果callbackTypes长度为0，这里不生成代码
+                // 2.如果长度为1
+                Callback[] callbacks = new Callback[1];
+                callbacks[0] = callback;
+                CGLIB$SET_THREAD_CALLBACKS(callbacks);
+                // 3.如果长度大于1，会生成抛出异常的代码
+                throw new IllegalStateException("More than one callback object required");
+
+                {thisType} instance = new {thisType}();
+                CGLIB$SET_THREAD_CALLBACKS(null);
+                return instance;
+            }
+         */
     }
 
     private void emitNewInstanceMultiarg(ClassEmitter ce, List constructors) {
@@ -1328,6 +1411,41 @@ public class Enhancer extends AbstractClassGenerator
         // 插入return字节码，返回实例对象
         e.return_value();
         e.end_method();
+
+        /*
+            public Object newInstance(Class[] classes, Object[] objects, Callback[] callbacks) {
+                CGLIB$SET_THREAD_CALLBACKS(callbacks);
+                {thisType} instance = null;
+                switch(classes.length) {
+                    case 0:
+                        instance = new {thisType}();
+                        break;
+                    case 1:
+                        // 当参数个数为1的构造器只有一个的时候，只需要比较参数类型是否相等就行
+                        if (classes[0].getName().equals(xxx)) {
+                            instance = new {thisType}((classes[0])objects[0]):
+                        }
+                        break;
+                    case 2:
+                        // 当参数个数为2的构造器有多个的时候，就需要根据参数类型名称的hashcode再进行switch了,
+                        // 并且选择的是区分度最大的那个参数类型，比如两个构造函数的参数分别是(String, Integer) 和 (String, Long)
+                        // 那么会选择第二个参数类型的hashcode来switch，因为这样才能更快的定位到匹配的构造方法。
+                        switch(classes[i].getName().hashCode()) {
+                            .
+                            .
+                            .
+                        }
+                        .
+                        .
+                        .
+                    default:
+                        throw new IllegalArgumentException("Constructor not found");
+                }
+                CGLIB$SET_THREAD_CALLBACKS(null);
+                return instance;
+
+            }
+         */
     }
 
     private void emitMethods(final ClassEmitter ce, List<MethodInfo> methods, List<Method> actualMethods) {
@@ -1552,6 +1670,11 @@ public class Enhancer extends AbstractClassGenerator
         // 然后插入return字节码返回
         e.return_value();
         e.end_method();
+        /*
+            public static void CGLIB$SET_THREAD_CALLBACKS(Callback[] callbacks) {
+                CGLIB$THREAD_CALLBACKS.set(callbacks);
+            }
+         */
     }
 
     private void emitSetStaticCallbacks(ClassEmitter ce) {
@@ -1566,6 +1689,12 @@ public class Enhancer extends AbstractClassGenerator
         // 向code中插入return字节码，返回
         e.return_value();
         e.end_method();
+
+        /*
+            public static void CGLIB$SET_STATIC_CALLBACKS(Callback[] callbacks) {
+                CGLIB$STATIC_CALLBACKS = callbacks;
+            }
+         */
     }
     
     private void emitCurrentCallback(CodeEmitter e, int index) {
@@ -1651,13 +1780,13 @@ public class Enhancer extends AbstractClassGenerator
         e.mark(found_callback);
         // 将栈顶元素强转为Callback[]类型的
         e.checkcast(CALLBACK_ARRAY);
-        // 然后加载me局部变量到栈顶，此时栈顶元素依次是me callbacks
+        // 然后加载me局部变量到栈顶，此时栈内元素是 callbacks me
         e.load_local(me);
-        // 将栈顶的两个元素交换，交换之后变成callbacks me
+        // 将栈顶的两个元素交换，交换之后变成me callbacks
         e.swap();
         // 根据callbackTypes进行倒序遍历
         for (int i = callbackTypes.length - 1; i >= 0; i--) {
-            // 当i不为0的时候，都将栈顶的两个字复制一遍重新压回栈顶，此时栈顶是callbacks me callbacks me
+            // 当i不为0的时候，都将栈顶的两个slot复制一遍重新压回栈顶，此时栈内元素是 me callbacks me callbacks
             if (i != 0) {
                 e.dup2();
             }
@@ -1686,9 +1815,9 @@ public class Enhancer extends AbstractClassGenerator
 //                }
 //                if (callbacks == null)
 //                    return;
-//                for (int i = callbacks.length - 1; i >= 0; i--) {
-//                    me.CGLIB$CALLBACK_i = callbacks[i];
-//                }
+//
+//                me.CGLIB$CALLBACK_i = callbacks[i];
+//                ...
 //            }
 //        }
     }

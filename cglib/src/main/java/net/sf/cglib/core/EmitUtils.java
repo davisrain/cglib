@@ -967,7 +967,7 @@ public class EmitUtils {
                     index = i;
                 }
             }
-            // 如果buckets为null或者分组数量为1，那么说明至少存在两个方法 方法名 方法参数都相等，直接跳转到def标签
+            // 如果buckets为null或者分组数量为1，那么说明至少存在两个方法 方法名 方法参数类型都相等，直接跳转到def标签
             if (buckets == null || buckets.size() == 1) {
                 // TODO: switch by returnType
                 // must have two methods with same name, types, and different return types
