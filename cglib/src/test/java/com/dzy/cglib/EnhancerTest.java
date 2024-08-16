@@ -8,6 +8,7 @@ import java.lang.reflect.Method;
 public class EnhancerTest {
 
     public static void main(String[] args) throws Exception {
+        Callback[] callbacks = {new CustomMethodInterceptor(), new CountryInfoDispatcher(), new CustomFixedValue(), NoOp.INSTANCE, new ProvinceInfoLazyLoader()};
         System.setProperty("cglib.debugLocation", EnhancerTest.class.getResource("").getPath());
         Enhancer enhancer = new Enhancer();
         enhancer.setSuperclass(Dog.class);
@@ -17,7 +18,13 @@ public class EnhancerTest {
         enhancer.setCallbackTypes(new Class[] {CustomMethodInterceptor.class, CountryInfoDispatcher.class, CustomFixedValue.class, NoOp.class, ProvinceInfoLazyLoader.class});
         Class proxyClass = enhancer.createClass();
         Factory proxyFactory = (Factory) proxyClass.newInstance();
-        Dog proxy = (Dog) proxyFactory.newInstance(new Callback[]{new CustomMethodInterceptor(), new CountryInfoDispatcher(), new CustomFixedValue(), NoOp.INSTANCE, new ProvinceInfoLazyLoader()});
+
+        // 1.直接在factory里面设置callbacks，把它当作代理对象来使用
+        proxyFactory.setCallbacks(callbacks);
+        System.out.println(((ProvinceInfo) proxyFactory).getProvince());
+
+        // 2.根据callbacks创建一个新的代理对象出来
+        Dog proxy = (Dog) proxyFactory.newInstance(callbacks);
         System.out.println(proxy.toString());
         proxy.eat();
         proxy.sleep();

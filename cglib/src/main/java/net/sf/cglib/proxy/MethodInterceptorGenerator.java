@@ -187,6 +187,19 @@ implements CallbackGenerator
 
         }
         // 生成public static MethodProxy CGLIB$findMethodProxy(Signature s)方法，根据方法签名，获取到对应的MethodProxy类型的CGLIB${methodName}${index}$Proxy静态属性
+
+        /*
+            public static MethodProxy CGLIB$findMethodProxy(Signature s) {
+                switch(s.toString().hashCode()) {
+                    case xxx:
+                        if (s.toString().equals("xxx") {
+                            return CGLIB${methodName}${index}$Proxy;
+                        }
+
+                }
+
+            }
+         */
         generateFindProxy(ce, sigMap);
 
     }

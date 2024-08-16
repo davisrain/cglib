@@ -1216,12 +1216,15 @@ public class Enhancer extends AbstractClassGenerator
         CodeEmitter e = ce.begin_method(Constants.ACC_PUBLIC, SET_CALLBACKS, null);
         // 加载this引用到栈顶
         e.load_this();
-        // 加载第一个参数，即Callback数组到栈顶
+        // 加载第一个参数，即Callback数组到栈顶，此时栈内元素是 this callbacks
         e.load_arg(0);
         // 根据数组长度遍历
         for (int i = 0; i < callbackTypes.length; i++) {
-            // 复制栈顶的两个元素
-            e.dup2();
+            // 复制栈顶的两个元素，此时栈内的元素是 this callbacks this callbacks
+            // TODO 这段if是自己添加的，如果不加return的时候栈顶会遗留两个元素
+            if (i != callbackTypes.length - 1) {
+                e.dup2();
+            }
             // 获取数组i位置的Callback
             e.aaload(i);
             // 强转检查
