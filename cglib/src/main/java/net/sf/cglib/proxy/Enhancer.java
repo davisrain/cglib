@@ -183,6 +183,7 @@ public class Enhancer extends AbstractClassGenerator
     // 表示代理类会实现Factory接口，通过Factory来创建真实的代理类
     private boolean useFactory = true;
     private Long serialVersionUID;
+    // 表示在构造方法里面调用其他方法的时候是否要对被调用的方法进行增强
     private boolean interceptDuringConstruction = true;
 
     /**
@@ -859,11 +860,11 @@ public class Enhancer extends AbstractClassGenerator
         try {
             // The subsequent dance is performed just once for each class,
             // so it does not matter much how fast it goes
-            // 从类中获取CGLIB$FACTORY_DATA这个静态变量
+            // 从类中获取 public static Object CGLIB$FACTORY_DATA这个静态变量
             factoryDataField = klass.getField(FACTORY_DATA_FIELD);
             // 然后将刚才创建的EnhancerFactoryData设置进去
             factoryDataField.set(null, factoryData);
-            // 从类中获取CGLIB$CALLBACK_FILTER这个静态字段
+            // 从类中获取private static Object CGLIB$CALLBACK_FILTER这个静态字段
             Field callbackFilterField = klass.getDeclaredField(CALLBACK_FILTER_FIELD);
             callbackFilterField.setAccessible(true);
             // 然后将自身持有的filter设置进去
@@ -1611,7 +1612,12 @@ public class Enhancer extends AbstractClassGenerator
                     // 然后添加getfield字节码 获取CGLIB$CONSTRUCTED字段到操作数栈顶
                     e.getfield(CONSTRUCTED_FIELD);
                     // 如果该字段的值不等于false的话，就进行跳转到mark的位置，否则执行if代码块里的逻辑。
-                    // 即如果该字段的值为false的话，执行if逻辑
+                    // 即如果该字段的值为false的话，执行if逻辑。
+
+                    // note：这个判断逻辑表达的含义就是如果interceptDuringConstruction如果为false的话，
+                    // 表示在构造器里面调用的方法就不被拦截增强，所以会去判断private boolean CGLIB$CONSTRUCTED字段，
+                    // 如果是false的话，说明代理对象还没有构造完成，那么就直接调用父类方法，不进行拦截；
+                    // 如果是true的话，说明代理对象已经构造完成，那么调用被拦截的代理对象的方法
                     e.if_jump(e.NE, constructed);
                     // aload_0
                     e.load_this();
