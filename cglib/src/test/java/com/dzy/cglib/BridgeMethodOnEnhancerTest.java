@@ -32,6 +32,8 @@ public class BridgeMethodOnEnhancerTest {
         proxyBar.publicMethod();
         proxyBar.genericParameter("test");
         proxyBar.covarianceReturnType();
+        // 尝试连续通过super关键字调用方法
+        proxyBar.invokeSuper();
     }
 
     static class Foo<T> {
@@ -47,6 +49,10 @@ public class BridgeMethodOnEnhancerTest {
         public Object covarianceReturnType() {
             System.out.println("Foo.covarianceReturnType");
             return new Object();
+        }
+
+        public void invokeSuper() {
+            System.out.println("Foo.invokeSuper");
         }
     }
 
@@ -81,6 +87,12 @@ public class BridgeMethodOnEnhancerTest {
         public String covarianceReturnType() {
             System.out.println("Bar.covarianceReturnType");
             return "";
+        }
+
+        @Override
+        public void invokeSuper() {
+            System.out.println("Bar.invokeSuper");
+            super.invokeSuper();
         }
     }
 
